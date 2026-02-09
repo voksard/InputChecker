@@ -1,6 +1,6 @@
 # InputChecker
 
-Minecraft Forge mod (1.8.9) to validate input sequences tick by tick.
+Minecraft Forge mod (1.8.9) to check input sequences tick by tick.
 
 ## Features
 - Tick-based input checking

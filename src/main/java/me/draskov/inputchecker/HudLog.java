@@ -6,7 +6,11 @@ import java.util.List;
 public class HudLog {
     private static final int MAX = 14;
     private static final List<String> lines = new ArrayList<>();
-    private static String statusLine = "§bInputchecker:";
+    private static String statusLine;
+
+    static {
+        updateStatusLine();
+    }
 
     public static void setStatus(String s) {
         statusLine = s;
@@ -29,6 +33,14 @@ public class HudLog {
 
     public static void clear() {
         lines.clear();
-        statusLine = "§bInputChecker";
+        updateStatusLine();
+    }
+
+    private static void updateStatusLine() {
+        statusLine = ColorConfig.getTitleColorCode() + "Inputchecker:";
+    }
+
+    public static void updateColors() {
+        updateStatusLine();
     }
 }

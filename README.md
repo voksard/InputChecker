@@ -4,8 +4,7 @@ Minecraft Forge mod (1.8.9) to check input sequences tick by tick.
 
 ## Features
 - Tick-based input checking
-- Lenient / Ignore inputs
-- FullSprint mode
+- Color display
 - HUD & Statistics panel
 
 ## Installation

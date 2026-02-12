@@ -28,9 +28,10 @@ public class GuiEditHud extends GuiScreen {
         this.drawDefaultBackground();
         drawPanels(mouseX, mouseY);
 
-        this.drawCenteredString(this.fontRendererObj,
+        TextRenderer.drawString(
                 "Inputchecker HUD Editor (F9) - drag panels / right click to toggle",
-                this.width / 2, 10, 0xFFFFFF);
+                this.width / 2 - TextRenderer.getStringWidth("Inputchecker HUD Editor (F9) - drag panels / right click to toggle") / 2,
+                10, 0xFFFFFF, true);
     }
 
     private void drawPanels(int mouseX, int mouseY) {
@@ -40,7 +41,7 @@ public class GuiEditHud extends GuiScreen {
 
         if (cfg.visible) {
             boolean hover = isMouseInsidePanel(mouseX, mouseY, mainLeft, mainTop, mainRight, mainBottom);
-            drawPanel(mc, cfg.x, cfg.y, HudLog.getStatus(), HudLog.getLines(), hover, colors.titleColor, true);
+            drawPanel(mc, cfg.x, cfg.y, HudLog.getStatus(), new java.util.ArrayList<>(), hover, colors.titleColor, true);
         } else {
             drawPlaceholder(mc, cfg.x, cfg.y, "Inputchecker (hidden)");
             // Calculer les bounds même si caché pour le clic droit
@@ -51,13 +52,9 @@ public class GuiEditHud extends GuiScreen {
             CheckElement active = ElementStore.getActive();
             String name = active == null ? "Inputchecker" : active.name;
             String title = "§b" + name + "§7 statistics:";
-            List<String> lines = StatsTracker.buildHudLines();
-            if (lines == null || lines.isEmpty()) {
-                lines = new java.util.ArrayList<>();
-            }
 
             boolean hover = isMouseInsidePanel(mouseX, mouseY, statsLeft, statsTop, statsRight, statsBottom);
-            drawPanel(mc, cfg.statsX, cfg.statsY, title, lines, hover, colors.titleColor, false);
+            drawPanel(mc, cfg.statsX, cfg.statsY, title, new java.util.ArrayList<>(), hover, colors.titleColor, false);
         } else {
             drawPlaceholder(mc, cfg.statsX, cfg.statsY, "Statistics (hidden)");
             // Calculer les bounds même si caché pour le clic droit
@@ -72,9 +69,9 @@ public class GuiEditHud extends GuiScreen {
     private void calculatePanelBounds(Minecraft mc, int x, int y, String status, List<String> lines, boolean isMain) {
         status = status.replaceAll("§.", "");
 
-        int w = mc.fontRendererObj.getStringWidth(status);
+        int w = TextRenderer.getStringWidth(status);
         for (String s : lines) {
-            w = Math.max(w, mc.fontRendererObj.getStringWidth(s));
+            w = Math.max(w, TextRenderer.getStringWidth(s));
         }
         int h = (1 + lines.size()) * 10 + 6;
 
@@ -97,10 +94,10 @@ public class GuiEditHud extends GuiScreen {
     }
 
     private void drawPlaceholder(Minecraft mc, int x, int y, String text) {
-        int w = mc.fontRendererObj.getStringWidth(text) + 6;
+        int w = TextRenderer.getStringWidth(text) + 6;
         int h = 20;
         net.minecraft.client.gui.Gui.drawRect(x - 3, y - 3, x + w + 3, y + h, 0x80555555);
-        mc.fontRendererObj.drawString(text, x, y + 5, 0xAAAAAA);
+        TextRenderer.drawString(text, x, y + 5, 0xAAAAAA, true);
     }
 
     private void drawPanel(Minecraft mc, int x, int y, String status, List<String> lines, boolean hover, int titleColor, boolean isMain) {
@@ -109,8 +106,8 @@ public class GuiEditHud extends GuiScreen {
 
         status = status.replaceAll("§.", "");
 
-        int w = mc.fontRendererObj.getStringWidth(status);
-        for (String s : lines) w = Math.max(w, mc.fontRendererObj.getStringWidth(s));
+        int w = TextRenderer.getStringWidth(status);
+        for (String s : lines) w = Math.max(w, TextRenderer.getStringWidth(s));
         int h = (1 + lines.size()) * 10 + 6;
 
         int left = x - 3;
@@ -121,11 +118,11 @@ public class GuiEditHud extends GuiScreen {
         int bg = 0x00000000; // Transparent
         drawRect(left, top, right, bottom, bg);
 
-        mc.fontRendererObj.drawString(status, x, y, titleColor);
+        TextRenderer.drawString(status, x, y, titleColor, true);
 
         int yy = y + 12;
         for (String s : lines) {
-            mc.fontRendererObj.drawString(s, x, yy, ColorConfig.get().contentColor);
+            TextRenderer.drawString(s, x, yy, ColorConfig.get().contentColor, true);
             yy += 10;
         }
     }

@@ -88,7 +88,7 @@ public class GuiCatalog extends GuiScreen {
                 } else {
                     ElementStore.activeId = el.id;
                     HudLog.clear();
-                    HudLog.setStatus("§bInputChecker");
+                    HudLog.setStatus(ColorConfig.getTitleColorCode() + "Inputchecker:");
                     HudLog.push(ColorConfig.getContentColorCode() + "Right click to start");
                 }
 

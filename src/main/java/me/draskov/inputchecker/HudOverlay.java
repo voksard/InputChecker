@@ -61,9 +61,9 @@ public class HudOverlay {
 
         status = status.replaceAll("§.", "");
 
-        int w = mc.fontRendererObj.getStringWidth(status);
+        int w = TextRenderer.getStringWidth(status);
         for (String line : lines) {
-            w = Math.max(w, mc.fontRendererObj.getStringWidth(line));
+            w = Math.max(w, TextRenderer.getStringWidth(line));
         }
         int h = (1 + lines.size()) * 10 + 6;
 
@@ -79,11 +79,11 @@ public class HudOverlay {
         }
 
         net.minecraft.client.gui.Gui.drawRect(L, T, R, B, 0x00000000);
-        mc.fontRendererObj.drawString(status, x, y, colors.titleColor);
+        TextRenderer.drawString(status, x, y, colors.titleColor, true);
 
         int yy = y + 12;
         for (String line : lines) {
-            mc.fontRendererObj.drawString(line, x, yy, colors.contentColor);
+            TextRenderer.drawString(line, x, yy, colors.contentColor, true);
             yy += 10;
         }
     }

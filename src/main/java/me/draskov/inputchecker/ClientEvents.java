@@ -3,22 +3,20 @@ package me.draskov.inputchecker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.settings.KeyBinding;
 import net.minecraftforge.client.event.MouseEvent;
+import net.minecraftforge.event.world.WorldEvent;
 import net.minecraftforge.fml.client.registry.ClientRegistry;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.InputEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
+import net.minecraftforge.fml.common.network.FMLNetworkEvent;
 import org.lwjgl.input.Keyboard;
 import org.lwjgl.input.Mouse;
-import net.minecraftforge.event.world.WorldEvent;
-import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
-import net.minecraftforge.fml.common.network.FMLNetworkEvent;
 
 
 public class ClientEvents {
 
     private final KeyBinding openGuiKey;
     private final KeyBinding editHudKey;
-
     private final InputRuntimeChecker checker = new InputRuntimeChecker();
 
     public ClientEvents() {
@@ -31,23 +29,21 @@ public class ClientEvents {
 
     @SubscribeEvent
     public void onKey(InputEvent.KeyInputEvent e) {
-        Minecraft mc = Minecraft.getMinecraft();
-
         if (openGuiKey.isPressed()) {
-            mc.displayGuiScreen(new GuiCatalog());
+            Minecraft.getMinecraft().displayGuiScreen(new GuiCatalog());
         }
 
         if (editHudKey.isPressed()) {
-            mc.displayGuiScreen(new GuiEditHud());
+            Minecraft.getMinecraft().displayGuiScreen(new GuiEditHud());
         }
     }
 
-    // Right click anywhere in-game = restart checking
     @SubscribeEvent
     public void onMouse(MouseEvent e) {
         Minecraft mc = Minecraft.getMinecraft();
-        if (mc.thePlayer == null || mc.theWorld == null) return;
-        if (mc.currentScreen != null) return;
+        if (!isInGame(mc) || mc.currentScreen != null) {
+            return;
+        }
 
         if (Mouse.getEventButton() == 1 && Mouse.getEventButtonState()) {
             checker.restart(mc);
@@ -56,24 +52,32 @@ public class ClientEvents {
 
     @SubscribeEvent
     public void onClientTick(TickEvent.ClientTickEvent e) {
-        if (e.phase != TickEvent.Phase.END) return;
+        if (e.phase != TickEvent.Phase.END) {
+            return;
+        }
 
         Minecraft mc = Minecraft.getMinecraft();
-        if (mc.thePlayer == null || mc.theWorld == null) return;
-
-        checker.tick(mc);
+        if (isInGame(mc)) {
+            checker.tick(mc);
+        }
     }
 
     @SubscribeEvent
     public void onWorldUnload(WorldEvent.Unload e) {
-        // ✅ solo: quit world => reset stats
+        checker.reset();
+        ElementStore.clearActive();
         StatsTracker.resetSession();
     }
 
     @SubscribeEvent
     public void onDisconnect(FMLNetworkEvent.ClientDisconnectionFromServerEvent e) {
-        // ✅ multi: disconnect => reset stats
+        checker.reset();
+        ElementStore.clearActive();
         StatsTracker.resetSession();
+    }
+
+    private boolean isInGame(Minecraft mc) {
+        return mc.thePlayer != null && mc.theWorld != null;
     }
 
 }

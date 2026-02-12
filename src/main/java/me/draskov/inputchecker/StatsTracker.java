@@ -3,29 +3,21 @@ package me.draskov.inputchecker;
 import java.util.*;
 
 public class StatsTracker {
-
     private static final int MAX_RUNS = 20;
 
     private static class State {
-        List<Boolean> results = new ArrayList<Boolean>(); // true=OK, false=FAIL
-        Map<String, Integer> failReasons = new HashMap<String, Integer>(); // reason -> count
+        List<Boolean> results = new ArrayList<>();
+        Map<String, Integer> failReasons = new HashMap<>();
     }
 
     private static State STATE = new State();
-
-    // Context (active element)
     private static String contextElementId = null;
 
-    /** Reset stats for the current session (no persistence). */
     public static void resetSession() {
         STATE = new State();
         contextElementId = null;
     }
 
-    /**
-     * Ensure stats context matches current active element.
-     * If the active element changes (or becomes null), stats are reset.
-     */
     public static void ensureContext(String activeElementId) {
         if (activeElementId == null) {
             if (contextElementId != null) {
@@ -46,96 +38,134 @@ public class StatsTracker {
 
     public static void recordFail(String reason) {
         pushResult(false);
-
         String key = normalizeReason(reason);
         Integer cur = STATE.failReasons.get(key);
-        STATE.failReasons.put(key, Integer.valueOf(cur == null ? 1 : (cur.intValue() + 1)));
+        STATE.failReasons.put(key, cur == null ? 1 : (cur + 1));
     }
 
     public static int getTotal() {
-        return (STATE.results == null) ? 0 : STATE.results.size();
+        return STATE.results == null ? 0 : STATE.results.size();
     }
 
     public static int getOkCount() {
         if (STATE.results == null) return 0;
         int ok = 0;
-        for (Boolean b : STATE.results) if (b != null && b.booleanValue()) ok++;
+        for (Boolean b : STATE.results) {
+            if (b != null && b) ok++;
+        }
         return ok;
     }
 
     public static int getConsistencyPercent() {
         int total = getTotal();
-        if (total <= 0) return 0;
-        int ok = getOkCount();
-        return (ok * 100) / total;
+        return total <= 0 ? 0 : (getOkCount() * 100) / total;
     }
 
     public static String getMostFrequentMistake() {
-        if (STATE.failReasons == null || STATE.failReasons.isEmpty()) return "none";
+        if (STATE.failReasons == null || STATE.failReasons.isEmpty()) {
+            return ColorConfig.getTitleColorCode() + "none";
+        }
 
         String best = null;
         int bestCount = -1;
 
         for (Map.Entry<String, Integer> e : STATE.failReasons.entrySet()) {
             if (e.getKey() == null) continue;
-            int c = (e.getValue() == null) ? 0 : e.getValue().intValue();
+            int c = e.getValue() == null ? 0 : e.getValue();
             if (c > bestCount) {
                 bestCount = c;
                 best = e.getKey();
             }
         }
 
-        if (best == null || bestCount <= 0) return "none";
-        return best + " (" + bestCount + ")";
+        if (best == null || bestCount <= 0) {
+            return ColorConfig.getTitleColorCode() + "none";
+        }
+
+        // Formater avec les bonnes couleurs
+        // Format: "Tick X expected <value> got <value>"
+        String formatted = formatMistakeWithColors(best) + ColorConfig.getContentColorCode() + " (" + bestCount + ")";
+        return formatted;
+    }
+
+    /**
+     * Formate une erreur avec les bonnes couleurs
+     * Format: "Tick X expected <value> got <value>"
+     * Texte en color2, valeurs et numéros en color1 (titleColor)
+     */
+    private static String formatMistakeWithColors(String mistake) {
+        String contentColor = ColorConfig.getContentColorCode();
+        String valueColor = ColorConfig.getTitleColorCode();
+
+        // Chercher "expected" et "got" dans la phrase
+        int expectedIdx = mistake.indexOf("expected ");
+        int gotIdx = mistake.indexOf(" got ");
+
+        if (expectedIdx == -1 || gotIdx == -1) {
+            // Format non reconnu, retourner tel quel avec la couleur de base
+            return contentColor + mistake;
+        }
+
+        // Extraire les parties
+        // Format: "Tick X expected ..." où X est le numéro de tick
+        String tickPart = mistake.substring(0, expectedIdx).trim(); // "Tick X"
+
+        // Séparer "Tick" et le numéro
+        String tickNum = "";
+        String tickWord = "Tick ";
+        if (tickPart.startsWith("Tick ")) {
+            tickNum = tickPart.substring(5); // Le numéro après "Tick "
+        }
+
+        String expectedValue = mistake.substring(expectedIdx + 9, gotIdx); // valeur expected
+        String gotText = " got "; // " got "
+        String gotValue = mistake.substring(gotIdx + 5); // valeur got
+
+        return contentColor + tickWord + valueColor + tickNum + contentColor + " expected " + valueColor + expectedValue + contentColor + gotText + valueColor + gotValue;
     }
 
     public static String colorForPercent(int pct) {
-        if (pct >= 80) return "§2";   // dark green
-        if (pct >= 60) return "§a";   // green
-        if (pct >= 40) return "§e";   // yellow
-        if (pct >= 20) return "§6";   // gold/orange
-        return "§4";                  // dark red
+        if (pct >= 80) return "§2";
+        if (pct >= 60) return "§a";
+        if (pct >= 40) return "§e";
+        if (pct >= 20) return "§6";
+        return "§4";
     }
 
-    /** Lines for the stats panel. If no data, return empty list (= panel looks empty). */
     public static List<String> buildHudLines() {
-        List<String> out = new ArrayList<String>();
+        List<String> out = new ArrayList<>();
 
         int total = getTotal();
-        if (total <= 0) return out; // << empty panel when nothing recorded
+        if (total <= 0) return out;
 
         int ok = getOkCount();
         int pct = getConsistencyPercent();
-        String pctColor = colorForPercent(pct);
 
-        out.add("§7Runs (last " + MAX_RUNS + "): §f" + total);
-        out.add("§7Input consistency: " + pctColor + pct + "§7%  §8(" + ok + "/" + total + ")");
-        out.add("§7Most frequent mistake:");
-        out.add("§c" + getMostFrequentMistake());
+        String valueColor = ColorConfig.getTitleColorCode();
+        out.add(ColorConfig.getContentColorCode() + "Runs (last " + MAX_RUNS + "): " + valueColor + total);
+        out.add(ColorConfig.getContentColorCode() + "Input consistency: " + valueColor + pct + valueColor + "%" + ColorConfig.getContentColorCode() + " (" + ok + "/" + total + ")");
+        out.add(ColorConfig.getContentColorCode() + "Most frequent mistake:");
+        out.add(getMostFrequentMistake());
 
         return out;
     }
 
-    // ---- internal ----
-
     private static void pushResult(boolean ok) {
-        if (STATE.results == null) STATE.results = new ArrayList<Boolean>();
+        if (STATE.results == null) STATE.results = new ArrayList<>();
 
-        // RESET COMPLET quand on dépasse MAX_RUNS
         if (STATE.results.size() >= MAX_RUNS) {
             STATE.results.clear();
             STATE.failReasons.clear();
         }
 
-        STATE.results.add(Boolean.valueOf(ok));
+        STATE.results.add(ok);
     }
 
     private static String normalizeReason(String r) {
         if (r == null) return "unknown";
         r = r.trim();
-        if (r.length() == 0) return "unknown";
-        r = r.replaceAll("§.", ""); // strip MC color codes
-        if (r.length() > 80) r = r.substring(0, 80);
-        return r;
+        if (r.isEmpty()) return "unknown";
+        r = r.replaceAll("§.", "");
+        return r.length() > 80 ? r.substring(0, 80) : r;
     }
 }

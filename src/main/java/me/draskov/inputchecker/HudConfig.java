@@ -14,8 +14,6 @@ public class HudConfig {
     public int x = 6;
     public int y = 6;
     public boolean visible = true;
-
-    // --- NEW: stats panel ---
     public int statsX = 6;
     public int statsY = 90;
     public boolean statsVisible = true;
@@ -39,30 +37,19 @@ public class HudConfig {
             save();
             return;
         }
-        Reader r = null;
-        try {
-            r = new FileReader(f);
+
+        try (Reader r = new FileReader(f)) {
             HudConfig loaded = GSON.fromJson(r, HudConfig.class);
             if (loaded != null) INSTANCE = loaded;
         } catch (Exception ignored) {
-        } finally {
-            if (r != null) {
-                try { r.close(); } catch (Exception ignored2) {}
-            }
         }
     }
 
     public static void save() {
         File f = getFile();
-        Writer w = null;
-        try {
-            w = new FileWriter(f);
+        try (Writer w = new FileWriter(f)) {
             GSON.toJson(INSTANCE, w);
         } catch (Exception ignored) {
-        } finally {
-            if (w != null) {
-                try { w.close(); } catch (Exception ignored2) {}
-            }
         }
     }
 }

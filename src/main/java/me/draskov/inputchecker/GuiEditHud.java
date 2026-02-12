@@ -14,55 +14,101 @@ public class GuiEditHud extends GuiScreen {
     private int dragOffsetX;
     private int dragOffsetY;
 
+    // Bounds des panneaux pour la détection de la souris
+    private int mainLeft, mainTop, mainRight, mainBottom;
+    private int statsLeft, statsTop, statsRight, statsBottom;
+
     @Override
     public void initGui() {
-        HudLog.clear();
-        HudLog.setStatus("§bInputChecker"); // cyan title
-        HudLog.push("§7Left click + drag = move panel");
-        HudLog.push("§7Right click on panel = hide/show");
-        HudLog.push("§7ESC = exit");
+        // Ne pas modifier HudLog ici car ça reste affiché après la fermeture
     }
 
     @Override
     public void drawScreen(int mouseX, int mouseY, float partialTicks) {
         this.drawDefaultBackground();
-
-        // Reuse normal overlay drawing so bounds match exactly
-        // (We just call the overlay logic by manually drawing panels here)
         drawPanels(mouseX, mouseY);
 
         this.drawCenteredString(this.fontRendererObj,
-                "InputChecker HUD Editor (F9) - drag panels / right click to toggle",
+                "Inputchecker HUD Editor (F9) - drag panels / right click to toggle",
                 this.width / 2, 10, 0xFFFFFF);
     }
 
     private void drawPanels(int mouseX, int mouseY) {
         Minecraft mc = Minecraft.getMinecraft();
         HudConfig cfg = HudConfig.get();
+        ColorConfig colors = ColorConfig.get();
 
-        // MAIN
         if (cfg.visible) {
-            drawPanel(mc, cfg.x, cfg.y, HudLog.getStatus(), HudLog.getLines(),
-                    HudOverlay.isMouseInsideMain(mouseX, mouseY));
+            boolean hover = isMouseInsidePanel(mouseX, mouseY, mainLeft, mainTop, mainRight, mainBottom);
+            drawPanel(mc, cfg.x, cfg.y, HudLog.getStatus(), HudLog.getLines(), hover, colors.titleColor, true);
         } else {
-            String t1 = "Main HUD hidden";
-            String t2 = "Right click the empty area where it was to show it";
-            this.drawCenteredString(this.fontRendererObj, t1, this.width / 2, this.height / 2 - 12, 0xAAAAAA);
-            this.drawCenteredString(this.fontRendererObj, t2, this.width / 2, this.height / 2, 0xAAAAAA);
+            drawPlaceholder(mc, cfg.x, cfg.y, "Inputchecker (hidden)");
+            // Calculer les bounds même si caché pour le clic droit
+            calculatePanelBounds(mc, cfg.x, cfg.y, "Inputchecker (hidden)", java.util.Collections.emptyList(), true);
         }
 
-        // STATS
         if (cfg.statsVisible) {
             CheckElement active = ElementStore.getActive();
-            String name = (active == null || active.name == null) ? "InputChecker" : active.name;
-            String title = "§b" + name + " statistics";
+            String name = active == null ? "Inputchecker" : active.name;
+            String title = "§b" + name + "§7 statistics:";
+            List<String> lines = StatsTracker.buildHudLines();
+            if (lines == null || lines.isEmpty()) {
+                lines = new java.util.ArrayList<>();
+            }
 
-            drawPanel(mc, cfg.statsX, cfg.statsY, title, StatsTracker.buildHudLines(),
-                    HudOverlay.isMouseInsideStats(mouseX, mouseY));
+            boolean hover = isMouseInsidePanel(mouseX, mouseY, statsLeft, statsTop, statsRight, statsBottom);
+            drawPanel(mc, cfg.statsX, cfg.statsY, title, lines, hover, colors.titleColor, false);
+        } else {
+            drawPlaceholder(mc, cfg.statsX, cfg.statsY, "Statistics (hidden)");
+            // Calculer les bounds même si caché pour le clic droit
+            calculatePanelBounds(mc, cfg.statsX, cfg.statsY, "Statistics (hidden)", java.util.Collections.emptyList(), false);
         }
     }
 
-    private void drawPanel(Minecraft mc, int x, int y, String status, List<String> lines, boolean hover) {
+    private boolean isMouseInsidePanel(int mx, int my, int left, int top, int right, int bottom) {
+        return mx >= left && mx <= right && my >= top && my <= bottom;
+    }
+
+    private void calculatePanelBounds(Minecraft mc, int x, int y, String status, List<String> lines, boolean isMain) {
+        status = status.replaceAll("§.", "");
+
+        int w = mc.fontRendererObj.getStringWidth(status);
+        for (String s : lines) {
+            w = Math.max(w, mc.fontRendererObj.getStringWidth(s));
+        }
+        int h = (1 + lines.size()) * 10 + 6;
+
+        int left = x - 3;
+        int top = y - 3;
+        int right = x + w + 6;
+        int bottom = y + h;
+
+        if (isMain) {
+            mainLeft = left;
+            mainTop = top;
+            mainRight = right;
+            mainBottom = bottom;
+        } else {
+            statsLeft = left;
+            statsTop = top;
+            statsRight = right;
+            statsBottom = bottom;
+        }
+    }
+
+    private void drawPlaceholder(Minecraft mc, int x, int y, String text) {
+        int w = mc.fontRendererObj.getStringWidth(text) + 6;
+        int h = 20;
+        net.minecraft.client.gui.Gui.drawRect(x - 3, y - 3, x + w + 3, y + h, 0x80555555);
+        mc.fontRendererObj.drawString(text, x, y + 5, 0xAAAAAA);
+    }
+
+    private void drawPanel(Minecraft mc, int x, int y, String status, List<String> lines, boolean hover, int titleColor, boolean isMain) {
+        // Calculer et sauvegarder les bounds AVANT de dessiner
+        calculatePanelBounds(mc, x, y, status, lines, isMain);
+
+        status = status.replaceAll("§.", "");
+
         int w = mc.fontRendererObj.getStringWidth(status);
         for (String s : lines) w = Math.max(w, mc.fontRendererObj.getStringWidth(s));
         int h = (1 + lines.size()) * 10 + 6;
@@ -72,14 +118,14 @@ public class GuiEditHud extends GuiScreen {
         int right = x + w + 6;
         int bottom = y + h;
 
-        int bg = hover ? 0xA0000000 : 0x80000000;
+        int bg = 0x00000000; // Transparent
         drawRect(left, top, right, bottom, bg);
 
-        mc.fontRendererObj.drawString(status, x, y, 0xFFFFFF);
+        mc.fontRendererObj.drawString(status, x, y, titleColor);
 
         int yy = y + 12;
         for (String s : lines) {
-            mc.fontRendererObj.drawString(s, x, yy, 0xFFFFFF);
+            mc.fontRendererObj.drawString(s, x, yy, ColorConfig.get().contentColor);
             yy += 10;
         }
     }
@@ -87,11 +133,9 @@ public class GuiEditHud extends GuiScreen {
     @Override
     protected void mouseClicked(int mouseX, int mouseY, int button) throws IOException {
         HudConfig cfg = HudConfig.get();
+        boolean overMain = isMouseInsidePanel(mouseX, mouseY, mainLeft, mainTop, mainRight, mainBottom);
+        boolean overStats = isMouseInsidePanel(mouseX, mouseY, statsLeft, statsTop, statsRight, statsBottom);
 
-        boolean overMain = HudOverlay.isMouseInsideMain(mouseX, mouseY);
-        boolean overStats = HudOverlay.isMouseInsideStats(mouseX, mouseY);
-
-        // Right click toggles only the panel under mouse
         if (button == 1) {
             if (overMain) {
                 cfg.visible = !cfg.visible;
@@ -106,16 +150,15 @@ public class GuiEditHud extends GuiScreen {
             return;
         }
 
-        // Left click starts drag for panel under mouse
         if (button == 0) {
-            if (overMain && cfg.visible) {
+            if (overMain) {
                 draggingMain = true;
                 draggingStats = false;
                 dragOffsetX = mouseX - cfg.x;
                 dragOffsetY = mouseY - cfg.y;
                 return;
             }
-            if (overStats && cfg.statsVisible) {
+            if (overStats) {
                 draggingStats = true;
                 draggingMain = false;
                 dragOffsetX = mouseX - cfg.statsX;
@@ -149,7 +192,7 @@ public class GuiEditHud extends GuiScreen {
 
     @Override
     protected void keyTyped(char typedChar, int keyCode) throws IOException {
-        if (keyCode == 1) { // ESC
+        if (keyCode == 1) {
             this.mc.displayGuiScreen(null);
         }
     }

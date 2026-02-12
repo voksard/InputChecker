@@ -11,9 +11,6 @@ import java.io.Reader;
 import java.io.Writer;
 
 public class InputCheckerConfig {
-
-    // true  = sprint (ctrl) ignored by default unless mentioned (current behavior)
-    // false = sprint (ctrl) checked like other keys (strict)
     public boolean fullSprint = true;
 
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
@@ -35,30 +32,19 @@ public class InputCheckerConfig {
             save();
             return;
         }
-        Reader r = null;
-        try {
-            r = new FileReader(f);
+
+        try (Reader r = new FileReader(f)) {
             InputCheckerConfig loaded = GSON.fromJson(r, InputCheckerConfig.class);
             if (loaded != null) INSTANCE = loaded;
         } catch (Exception ignored) {
-        } finally {
-            if (r != null) {
-                try { r.close(); } catch (Exception ignored2) {}
-            }
         }
     }
 
     public static void save() {
         File f = getFile();
-        Writer w = null;
-        try {
-            w = new FileWriter(f);
+        try (Writer w = new FileWriter(f)) {
             GSON.toJson(INSTANCE, w);
         } catch (Exception ignored) {
-        } finally {
-            if (w != null) {
-                try { w.close(); } catch (Exception ignored2) {}
-            }
         }
     }
 }

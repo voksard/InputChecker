@@ -11,7 +11,6 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class ElementStore {
-
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final Type LIST_TYPE = new TypeToken<List<CheckElement>>(){}.getType();
 
@@ -19,7 +18,6 @@ public class ElementStore {
     public static String activeId = null;
 
     private static File getFile() {
-        // config/ dans le dossier Minecraft
         File configDir = new File(Minecraft.getMinecraft().mcDataDir, "config");
         if (!configDir.exists()) configDir.mkdirs();
         return new File(configDir, "inputchecker.json");
@@ -31,9 +29,10 @@ public class ElementStore {
             save();
             return;
         }
+
         try (Reader r = new FileReader(f)) {
             List<CheckElement> loaded = GSON.fromJson(r, LIST_TYPE);
-            elements = (loaded != null) ? loaded : new ArrayList<>();
+            elements = loaded != null ? loaded : new ArrayList<>();
         } catch (Exception ex) {
             elements = new ArrayList<>();
         }
@@ -43,7 +42,8 @@ public class ElementStore {
         File f = getFile();
         try (Writer w = new FileWriter(f)) {
             GSON.toJson(elements, LIST_TYPE, w);
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+        }
     }
 
     public static CheckElement getActive() {
@@ -52,5 +52,9 @@ public class ElementStore {
             if (e.id.equals(activeId)) return e;
         }
         return null;
+    }
+
+    public static void clearActive() {
+        activeId = null;
     }
 }

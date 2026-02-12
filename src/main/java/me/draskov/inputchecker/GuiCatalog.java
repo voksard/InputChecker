@@ -4,12 +4,16 @@ import net.minecraft.client.gui.GuiButton;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.gui.GuiTextField;
 import org.lwjgl.input.Keyboard;
+import org.lwjgl.input.Mouse;
 
 import java.io.IOException;
 
 public class GuiCatalog extends GuiScreen {
 
     private GuiTextField nameField;
+    private int scrollOffset = 0;
+    private static final int VISIBLE_ITEMS = 8;
+    private static final int ITEM_HEIGHT = 24;
 
     @Override
     public void initGui() {
@@ -17,49 +21,30 @@ public class GuiCatalog extends GuiScreen {
         int cx = this.width / 2;
 
         nameField = new GuiTextField(0, this.fontRendererObj, cx - 100, 25, 140, 20);
-        nameField.setText(""); // no placeholder
+        nameField.setText("");
 
         this.buttonList.clear();
         this.buttonList.add(new GuiButton(1, cx + 45, 25, 80, 20, "Add"));
 
-        // FullSprint toggle (moved DOWN so it won't overlap Name field)
-        boolean fullSprint = InputCheckerConfig.get().fullSprint;
-        this.buttonList.add(new GuiButton(
-                60,
-                cx - 140, 50,      // <<< moved from y=25 to y=50
-                255, 20,           // wider so the text fits
-                "FullSprint: " + (fullSprint ? "ON" : "OFF")
-        ));
-
-        // Start list lower because FullSprint now uses space
-        int y = 80;              // <<< was 60, moved down
+        int baseY = 60;
+        int visibleCount = 0;
         int idx = 0;
-        for (CheckElement el : ElementStore.elements) {
-            boolean isActive = (ElementStore.activeId != null && el.id.equals(ElementStore.activeId));
 
-            // Edit
-            this.buttonList.add(new GuiButton(
-                    1000 + idx,
-                    cx - 140, y, 180, 20,
-                    el.name + (isActive ? " [ACTIVE]" : "")
-            ));
+        for (int i = scrollOffset; i < ElementStore.elements.size() && visibleCount < VISIBLE_ITEMS; i++, idx++) {
+            CheckElement el = ElementStore.elements.get(i);
+            boolean isActive = ElementStore.activeId != null && el.id.equals(ElementStore.activeId);
 
-            // Activate / Deactivate
-            this.buttonList.add(new GuiButton(
-                    2000 + idx,
-                    cx + 45, y, 80, 20,
-                    isActive ? "Deactivate" : "Activate"
-            ));
+            int y = baseY + visibleCount * ITEM_HEIGHT;
 
-            // Delete
-            this.buttonList.add(new GuiButton(
-                    3000 + idx,
-                    cx + 130, y, 25, 20,
-                    "X"
-            ));
+            this.buttonList.add(new GuiButton(1000 + i, cx - 140, y, 180, 20,
+                    el.name + (isActive ? " [ACTIVE]" : "")));
 
-            y += 24;
-            idx++;
+            this.buttonList.add(new GuiButton(2000 + i, cx + 45, y, 80, 20,
+                    isActive ? "Deactivate" : "Activate"));
+
+            this.buttonList.add(new GuiButton(3000 + i, cx + 130, y, 25, 20, "X"));
+
+            visibleCount++;
         }
 
         this.buttonList.add(new GuiButton(2, cx - 40, this.height - 30, 80, 20, "Close"));
@@ -67,14 +52,6 @@ public class GuiCatalog extends GuiScreen {
 
     @Override
     protected void actionPerformed(GuiButton b) throws IOException {
-
-        // Toggle FullSprint
-        if (b.id == 60) {
-            InputCheckerConfig.get().fullSprint = !InputCheckerConfig.get().fullSprint;
-            InputCheckerConfig.save();
-            this.mc.displayGuiScreen(new GuiCatalog());
-            return;
-        }
 
         if (b.id == 1) {
             String n = nameField.getText().trim();
@@ -91,7 +68,6 @@ public class GuiCatalog extends GuiScreen {
             return;
         }
 
-        // Edit
         if (b.id >= 1000 && b.id < 2000) {
             int i = b.id - 1000;
             if (i >= 0 && i < ElementStore.elements.size()) {
@@ -100,29 +76,20 @@ public class GuiCatalog extends GuiScreen {
             return;
         }
 
-        // Activate / Deactivate
         if (b.id >= 2000 && b.id < 3000) {
             int i = b.id - 2000;
             if (i >= 0 && i < ElementStore.elements.size()) {
                 CheckElement el = ElementStore.elements.get(i);
-                boolean isActive = (ElementStore.activeId != null && el.id.equals(ElementStore.activeId));
+                boolean isActive = ElementStore.activeId != null && el.id.equals(ElementStore.activeId);
 
                 if (isActive) {
                     ElementStore.activeId = null;
-
-                    // IMPORTANT: wipe previous OK/FAIL lines
                     HudLog.clear();
-                    HudLog.setStatus("§7§bInputChecker§7: no active element");
-
-                    // (optionnel) si tu veux UNE ligne informative, décommente :
-                    // HudLog.push("§7No active element");
-
                 } else {
                     ElementStore.activeId = el.id;
-
                     HudLog.clear();
-                    HudLog.setStatus("§7§bInputChecker§7: active = " + el.name);
-                    HudLog.push("§7Activated");
+                    HudLog.setStatus("§bInputChecker");
+                    HudLog.push(ColorConfig.getContentColorCode() + "Right click to start");
                 }
 
                 this.mc.displayGuiScreen(new GuiCatalog());
@@ -130,7 +97,6 @@ public class GuiCatalog extends GuiScreen {
             return;
         }
 
-        // Delete
         if (b.id >= 3000 && b.id < 4000) {
             int i = b.id - 3000;
             if (i >= 0 && i < ElementStore.elements.size()) {
@@ -148,6 +114,21 @@ public class GuiCatalog extends GuiScreen {
     @Override
     public void onGuiClosed() {
         Keyboard.enableRepeatEvents(false);
+    }
+
+    @Override
+    public void handleMouseInput() throws IOException {
+        super.handleMouseInput();
+        int scroll = Mouse.getEventDWheel();
+        if (scroll != 0) {
+            int maxScroll = Math.max(0, ElementStore.elements.size() - VISIBLE_ITEMS);
+            if (scroll > 0) {
+                scrollOffset = Math.max(0, scrollOffset - 1);
+            } else {
+                scrollOffset = Math.min(maxScroll, scrollOffset + 1);
+            }
+            this.initGui();
+        }
     }
 
     @Override
@@ -171,7 +152,12 @@ public class GuiCatalog extends GuiScreen {
         this.drawString(this.fontRendererObj, "Name:", cx - 140, 31, 0xCCCCCC);
         nameField.drawTextBox();
 
-        // no extra hint line needed anymore (button is already clear)
+        int totalElements = ElementStore.elements.size();
+        if (totalElements > VISIBLE_ITEMS) {
+            this.drawString(this.fontRendererObj,
+                    "Elements " + (scrollOffset + 1) + "-" + Math.min(scrollOffset + VISIBLE_ITEMS, totalElements) + "/" + totalElements,
+                    cx - 140, 45, 0xAAAAAA);
+        }
 
         super.drawScreen(mouseX, mouseY, partialTicks);
     }

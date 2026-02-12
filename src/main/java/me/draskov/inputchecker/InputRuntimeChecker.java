@@ -6,37 +6,31 @@ import net.minecraft.client.settings.KeyBinding;
 import java.util.*;
 
 public class InputRuntimeChecker {
-
     private boolean armed = false;
     private boolean started = false;
     private int tickIndex = 0;
 
-    // previous physical state for PRESS detection
-    private final Map<String, Boolean> prevDown = new HashMap<String, Boolean>();
-
-    // continuity of EXPECTED keys (for auto press/hold inference)
-    private final Set<String> expectedKeysLastTick = new HashSet<String>();
-
-    // lenient windows (key = key name, NOT press/hold)
-    private final Map<String, LenientWindow> lenientWindows = new HashMap<String, LenientWindow>();
+    private final Map<String, Boolean> prevDown = new HashMap<>();
+    private final Set<String> expectedKeysLastTick = new HashSet<>();
+    private final Map<String, LenientWindow> lenientWindows = new HashMap<>();
 
     private static class LenientWindow {
-        int startTick;     // 0-based
-        int lastTick;      // 0-based
-        boolean satisfied; // key was DOWN at least once
+        int startTick;
+        int lastTick;
+        boolean satisfied;
     }
 
     private static class TokenSpec {
-        Mode mode;        // REQUIRED / LENIENT / IGNORE
-        String key;       // internal key ids: "w","a","jump","sprint","sneak"
+        Mode mode;
+        String key;
         boolean isWait;
     }
 
     private static class Expectation {
         Mode mode;
-        Action action;   // PRESS / HOLD / WAIT
-        String key;      // internal key ids
-        String id;       // "press-jump", "hold-w", "wait"
+        Action action;
+        String key;
+        String id;
     }
 
     private enum Mode { REQUIRED, LENIENT, IGNORE }
@@ -52,14 +46,29 @@ public class InputRuntimeChecker {
     private TickEntry lastTick = null;
     private int lastWarnTickIndex = -1;
 
-    // ---------------- Public API ----------------
+    private int findLastNonEmptyTick(CheckElement active) {
+        if (active == null || active.tickInputs == null) return -1;
+
+        for (int i = active.tickInputs.size() - 1; i >= 0; i--) {
+            String input = active.tickInputs.get(i);
+            if (input != null && !input.trim().isEmpty()) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    public void reset() {
+        resetAll();
+        HudLog.clear();
+    }
 
     public void restart(Minecraft mc) {
         CheckElement active = ElementStore.getActive();
         if (active == null || active.tickInputs == null || active.tickInputs.isEmpty()) {
             HudLog.clear();
-            HudLog.setStatus("§bInputChecker§7: no active element");
-            HudLog.push("§7Select an active element and add ticks");
+            HudLog.setStatus("§bInputchecker:");
+            HudLog.push(ColorConfig.getContentColorCode() + "No active element");
             resetAll();
             return;
         }
@@ -79,47 +88,38 @@ public class InputRuntimeChecker {
         lastWarnTickIndex = -1;
 
         HudLog.clear();
-        HudLog.setStatus("§bInputChecker§7: running (" + active.name + ")");
-        HudLog.push("§7Right click to start");
+        HudLog.setStatus("§bInputchecker:");
+        HudLog.push(ColorConfig.getContentColorCode() + "Running " + active.name);
     }
 
     public void tick(Minecraft mc) {
-        if (!armed) return;
-        if (mc.thePlayer == null || mc.theWorld == null) return;
-        if (mc.currentScreen != null) return;
+        if (!armed || mc.thePlayer == null || mc.theWorld == null || mc.currentScreen != null) {
+            return;
+        }
 
         CheckElement active = ElementStore.getActive();
-        if (active == null) {
+        if (active == null || active.tickInputs == null || active.tickInputs.isEmpty()) {
             HudLog.clear();
-            HudLog.setStatus("§bInputChecker§7: No active element");
+            HudLog.setStatus("§bInputchecker:");
             resetAll();
             return;
         }
 
-        if (active.tickInputs == null || active.tickInputs.isEmpty()) {
-            HudLog.clear();
-            HudLog.setStatus("§bInputChecker§7: No active element");
-            resetAll();
-            return;
-        }
+        // Trouver le dernier tick non-vide pour arrêter là
+        int lastNonEmptyTick = findLastNonEmptyTick(active);
 
-        // end of sequence
-        if (tickIndex >= active.tickInputs.size()) {
+        // Si on a dépassé le dernier tick rempli, la séquence est complète
+        if (tickIndex > lastNonEmptyTick) {
             String lenientFail = closeAllLenientWindowsIfNeeded();
             if (lenientFail != null) {
-                // STATS
                 StatsTracker.recordFail(lenientFail);
                 failStop(active.name, lenientFail);
                 return;
             }
 
             HudLog.clear();
-            HudLog.setStatus("§aOK (" + active.name + ")");
-            // HudLog.push inserts at TOP, so push bottom->top
-            HudLog.push("§7Right click to restart");
-            HudLog.push("§aSequence completed");
-
-            // STATS
+            HudLog.setStatus("§aOk " + active.name + ":");
+            HudLog.push(ColorConfig.getContentColorCode() + "Sequence completed");
             StatsTracker.recordOk();
 
             resetAll();
@@ -128,10 +128,45 @@ public class InputRuntimeChecker {
 
         String expectedRaw = active.tickInputs.get(tickIndex);
 
+        // Si la case est vide, appliquer la logique WAIT automatique
+        if (expectedRaw == null || expectedRaw.trim().isEmpty()) {
+            // Créer une expectation WAIT pour vérifier qu'aucune touche n'est pressée
+            List<TokenSpec> specs = new ArrayList<>();
+            List<Expectation> exps = new ArrayList<>();
+
+            Expectation waitExp = new Expectation();
+            waitExp.mode = Mode.REQUIRED;
+            waitExp.action = Action.WAIT;
+            waitExp.key = "";
+            waitExp.id = "wait";
+            exps.add(waitExp);
+
+            // Vérifier que aucune touche n'est pressée (action WAIT)
+            if (!isSatisfiedThisTick(mc, waitExp, specs)) {
+                // Une touche est pressée alors qu'on était en WAIT
+                Set<String> actualDown = buildActualDown(mc);
+
+                int failTick1 = tickIndex + 1;
+                HudLog.clear();
+                HudLog.setStatus("§cFail " + active.name + ":");
+                HudLog.push(ColorConfig.getContentColorCode() + "Got: " + ColorConfig.getTitleColorCode() + join(actualDown));
+                HudLog.push(ColorConfig.getContentColorCode() + "Expected: " + ColorConfig.getTitleColorCode() + "nothing " + ColorConfig.getContentColorCode() + "tick " + ColorConfig.getTitleColorCode() + failTick1);
+
+                StatsTracker.recordFail("Tick " + failTick1 + " expected nothing got " + join(actualDown));
+
+                resetAll();
+                updatePrevDown(mc);
+                return;
+            }
+
+            tickIndex++;
+            updatePrevDown(mc);
+            return;
+        }
+
         List<TokenSpec> specs = parseTokens(expectedRaw);
         List<Expectation> exps = buildExpectations(specs);
 
-        // start condition
         if (!started) {
             if (exps.isEmpty() || containsWait(exps)) {
                 started = true;
@@ -143,32 +178,24 @@ public class InputRuntimeChecker {
             }
         }
 
-        // close lenient windows that ended
         String winFail = resolveLenientWindowsEndingThisTick(specs);
         if (winFail != null) {
-            // STATS
             StatsTracker.recordFail(winFail);
             failStop(active.name, winFail);
             return;
         }
 
-        // REQUIRED missing
-        Set<String> missing = new LinkedHashSet<String>();
+        Set<String> missing = new LinkedHashSet<>();
         updateLenientWindows(mc, specs);
 
-        for (int i = 0; i < exps.size(); i++) {
-            Expectation e = exps.get(i);
-            if (e.mode != Mode.REQUIRED) continue;
-
-            if (!isSatisfiedThisTick(mc, e, specs)) {
+        for (Expectation e : exps) {
+            if (e.mode == Mode.REQUIRED && !isSatisfiedThisTick(mc, e, specs)) {
                 missing.add(e.id);
             }
         }
 
-        // UNEXPECTED inputs
         Set<String> unexpected = computeUnexpected(mc, specs);
 
-        // Build tick entry
         TickEntry te = new TickEntry();
         te.tick1 = tickIndex + 1;
         te.expectedRaw = expectedRaw;
@@ -176,115 +203,140 @@ public class InputRuntimeChecker {
         te.pressed = buildActualPressed(mc);
         lastTick = te;
 
-        // FAIL immediately on first wrong tick (clean display)
         if (!missing.isEmpty() || !unexpected.isEmpty()) {
             int failTick1 = tickIndex + 1;
-
             Set<String> expDisplay = buildDisplayExpected(specs);
-            String expStr = join(expDisplay);
-            if (expStr.length() == 0) expStr = "nothing";
-
+            String expStr = expDisplay.isEmpty() ? "nothing" : join(expDisplay);
             Set<String> gotDisplay = buildDisplayGot(te.down, specs);
-            String gotStr = join(gotDisplay);
-            if (gotStr.length() == 0) gotStr = "nothing";
+            String gotStr = gotDisplay.isEmpty() ? "nothing" : join(gotDisplay);
 
             HudLog.clear();
-            HudLog.setStatus("§cFAIL (" + active.name + ")");
-            // push bottom -> top
-            HudLog.push("§7Right click to restart");
-            HudLog.push("§7Got: §c" + gotStr);
-            HudLog.push("§7Expected: §f" + expStr + " §7tick §f" + failTick1);
+            HudLog.setStatus("§cFail " + active.name + ":");
+            HudLog.push(ColorConfig.getContentColorCode() + "Got: " + ColorConfig.getTitleColorCode() + gotStr);
+            HudLog.push(ColorConfig.getContentColorCode() + "Expected: " + ColorConfig.getTitleColorCode() + expStr + " " + ColorConfig.getContentColorCode() + "tick " + ColorConfig.getTitleColorCode() + failTick1);
 
-            // STATS (compact)
-            StatsTracker.recordFail("Tick " + failTick1 + " expected [" + expStr + "] got [" + gotStr + "]");
+            StatsTracker.recordFail("Tick " + failTick1 + " expected " + expStr + " got " + gotStr);
 
             resetAll();
             updatePrevDown(mc);
             return;
         }
 
-        // OK tick -> advance
         tickIndex++;
-
         expectedKeysLastTick.clear();
-        for (int i = 0; i < specs.size(); i++) {
-            TokenSpec ts = specs.get(i);
-            if (ts.isWait) continue;
-            if (ts.key != null && ts.key.length() > 0) expectedKeysLastTick.add(ts.key);
+        for (TokenSpec ts : specs) {
+            if (!ts.isWait && ts.key != null && !ts.key.isEmpty()) {
+                expectedKeysLastTick.add(ts.key);
+            }
+        }
+
+        // Ajouter aussi les touches cochées via checkboxes à expectedKeysLastTick
+        CheckElement active2 = ElementStore.getActive();
+        if (active2 != null && (tickIndex - 1) < active2.tickInputs.size()) {
+            int prevTickIdx = tickIndex - 1;
+            boolean checkSpr = prevTickIdx >= 0 && prevTickIdx < active2.checkSprint.size() && active2.checkSprint.get(prevTickIdx);
+            boolean checkJmp = prevTickIdx >= 0 && prevTickIdx < active2.checkJump.size() && active2.checkJump.get(prevTickIdx);
+            boolean checkSnk = prevTickIdx >= 0 && prevTickIdx < active2.checkSneak.size() && active2.checkSneak.get(prevTickIdx);
+
+            if (checkSpr) expectedKeysLastTick.add("spr");
+            if (checkJmp) expectedKeysLastTick.add("jmp");
+            if (checkSnk) expectedKeysLastTick.add("snk");
         }
 
         updatePrevDown(mc);
     }
 
-    // ---------------- Display helpers ----------------
-
     private boolean hideSprintInDisplay() {
-        // FullSprint ON => never show sprint in Expected/Got
         return InputCheckerConfig.get().fullSprint;
     }
 
     private Set<String> buildDisplayExpected(List<TokenSpec> specs) {
-        Set<String> out = new LinkedHashSet<String>();
+        Set<String> out = new LinkedHashSet<>();
 
-        for (int i = 0; i < specs.size(); i++) {
-            if (specs.get(i).isWait) {
+        for (TokenSpec spec : specs) {
+            if (spec.isWait) {
                 out.add("wait");
                 return out;
             }
         }
 
         boolean hideSprint = hideSprintInDisplay();
+        for (TokenSpec ts : specs) {
+            if (!ts.isWait && ts.mode == Mode.REQUIRED && !(hideSprint && "sprint".equals(ts.key))) {
+                out.add(ts.key);
+            }
+        }
 
-        for (int i = 0; i < specs.size(); i++) {
-            TokenSpec ts = specs.get(i);
-            if (ts.isWait) continue;
+        // Ajouter les touches cochées via checkboxes
+        CheckElement active = ElementStore.getActive();
+        if (active != null && tickIndex < active.tickInputs.size()) {
+            boolean checkSpr = tickIndex < active.checkSprint.size() && active.checkSprint.get(tickIndex);
+            boolean checkJmp = tickIndex < active.checkJump.size() && active.checkJump.get(tickIndex);
+            boolean checkSnk = tickIndex < active.checkSneak.size() && active.checkSneak.get(tickIndex);
 
-            if (ts.mode != Mode.REQUIRED) continue;
-
-            if (hideSprint && "sprint".equals(ts.key)) continue;
-
-            out.add(ts.key);
+            if (checkSpr && !out.contains("spr")) {
+                out.add("spr");
+            }
+            if (checkJmp && !out.contains("jmp")) {
+                out.add("jmp");
+            }
+            if (checkSnk && !out.contains("snk")) {
+                out.add("snk");
+            }
         }
 
         return out;
     }
 
     private Set<String> buildDisplayGot(Set<String> actualDown, List<TokenSpec> specs) {
-        Set<String> out = new LinkedHashSet<String>();
+        Set<String> out = new LinkedHashSet<>();
         boolean hideSprint = hideSprintInDisplay();
 
-        Set<String> hidden = new HashSet<String>();
-        for (int i = 0; i < specs.size(); i++) {
-            TokenSpec ts = specs.get(i);
-            if (ts.isWait) continue;
-            if (ts.mode == Mode.IGNORE || ts.mode == Mode.LENIENT) hidden.add(ts.key);
+        Set<String> hidden = new HashSet<>();
+        for (TokenSpec ts : specs) {
+            if (!ts.isWait && (ts.mode == Mode.IGNORE || ts.mode == Mode.LENIENT)) {
+                hidden.add(ts.key);
+            }
         }
 
+        // Vérifier quels checkboxes sont cochés et quels "no" sont cochés pour cette partie du code
+        CheckElement active = ElementStore.getActive();
+        boolean checkSpr = active != null && tickIndex < active.checkSprint.size() && active.checkSprint.get(tickIndex);
+        boolean checkJmp = active != null && tickIndex < active.checkJump.size() && active.checkJump.get(tickIndex);
+        boolean checkSnk = active != null && tickIndex < active.checkSneak.size() && active.checkSneak.get(tickIndex);
+
+        boolean noSpr = active != null && tickIndex < active.noSprint.size() && active.noSprint.get(tickIndex);
+        boolean noJmp = active != null && tickIndex < active.noJump.size() && active.noJump.get(tickIndex);
+        boolean noSnk = active != null && tickIndex < active.noSneak.size() && active.noSneak.get(tickIndex);
+
         for (String k : actualDown) {
-            if (hideSprint && "sprint".equals(k)) continue;
-            if (hidden.contains(k)) continue;
-            out.add(k);
+            if (!(hideSprint && "sprint".equals(k)) && !hidden.contains(k)) {
+                // Exclure spr, snk, jmp s'ils ne sont pas cochés ET ne sont pas dans "no"
+                if ("spr".equals(k) && !checkSpr && !noSpr) {
+                    continue;
+                }
+                if ("snk".equals(k) && !checkSnk && !noSnk) {
+                    continue;
+                }
+                if ("jmp".equals(k) && !checkJmp && !noJmp) {
+                    continue;
+                }
+                out.add(k);
+            }
         }
         return out;
     }
 
-    // ---------------- Core: tokens & expectations ----------------
-
     private List<TokenSpec> parseTokens(String raw) {
-        List<TokenSpec> out = new ArrayList<TokenSpec>();
+        List<TokenSpec> out = new ArrayList<>();
         if (raw == null) return out;
 
-        raw = raw.trim().toLowerCase();
-        if (raw.length() == 0) return out;
-
-        raw = raw.replace(" ", "+");
+        raw = raw.trim().toLowerCase().replace(" ", "+");
         String[] parts = raw.split("\\+");
 
-        for (int i = 0; i < parts.length; i++) {
-            String original = parts[i].trim();
-            if (original.length() == 0) continue;
-
-            String token = original;
+        for (String original : parts) {
+            String token = original.trim();
+            if (token.isEmpty()) continue;
 
             if ("wait".equals(token)) {
                 TokenSpec ts = new TokenSpec();
@@ -296,15 +348,14 @@ public class InputRuntimeChecker {
             }
 
             Mode mode = Mode.REQUIRED;
-            if (token.startsWith("lenient-")) {
+            if (token.startsWith("lnt-")) {
                 mode = Mode.LENIENT;
-                token = token.substring("lenient-".length());
+                token = token.substring("lnt-".length());
             } else if (token.startsWith("ignore-")) {
                 mode = Mode.IGNORE;
                 token = token.substring("ignore-".length());
             }
 
-            // normalize to internal names: jump/sprint/sneak (and accept old words)
             String key = normalizeKey(token);
 
             if (!isSupportedKey(key)) {
@@ -323,12 +374,9 @@ public class InputRuntimeChecker {
     }
 
     private List<Expectation> buildExpectations(List<TokenSpec> specs) {
-        List<Expectation> out = new ArrayList<Expectation>();
+        List<Expectation> out = new ArrayList<>();
 
-        boolean hasWait = false;
-        for (int i = 0; i < specs.size(); i++) {
-            if (specs.get(i).isWait) { hasWait = true; break; }
-        }
+        boolean hasWait = specs.stream().anyMatch(s -> s.isWait);
 
         if (hasWait) {
             Expectation w = new Expectation();
@@ -340,42 +388,83 @@ public class InputRuntimeChecker {
             return out;
         }
 
-        for (int i = 0; i < specs.size(); i++) {
-            TokenSpec ts = specs.get(i);
-            if (ts.isWait) continue;
-            if (ts.mode != Mode.REQUIRED) continue;
+        // Ajouter les expectations pour les inputs du texte
+        for (TokenSpec ts : specs) {
+            if (!ts.isWait && ts.mode == Mode.REQUIRED) {
+                Action a = expectedKeysLastTick.contains(ts.key) ? Action.HOLD : Action.PRESS;
+                Expectation e = new Expectation();
+                e.mode = Mode.REQUIRED;
+                e.action = a;
+                e.key = ts.key;
+                e.id = (a == Action.PRESS ? "press-" : "hold-") + ts.key;
+                out.add(e);
+            }
+        }
 
-            Action a = expectedKeysLastTick.contains(ts.key) ? Action.HOLD : Action.PRESS;
+        // Ajouter les expectations pour les checkboxes cochées (spr, jmp, snk)
+        CheckElement active = ElementStore.getActive();
+        if (active != null && tickIndex < active.tickInputs.size()) {
+            boolean checkSpr = tickIndex < active.checkSprint.size() && active.checkSprint.get(tickIndex);
+            boolean checkJmp = tickIndex < active.checkJump.size() && active.checkJump.get(tickIndex);
+            boolean checkSnk = tickIndex < active.checkSneak.size() && active.checkSneak.get(tickIndex);
 
-            Expectation e = new Expectation();
-            e.mode = Mode.REQUIRED;
-            e.action = a;
-            e.key = ts.key;
-            e.id = (a == Action.PRESS ? "press-" : "hold-") + ts.key;
-            out.add(e);
+            // Ajouter spr si coché et pas déjà dans les specs
+            if (checkSpr && !tokenMentionsKey(specs, "spr")) {
+                Action a = expectedKeysLastTick.contains("spr") ? Action.HOLD : Action.PRESS;
+                Expectation e = new Expectation();
+                e.mode = Mode.REQUIRED;
+                e.action = a;
+                e.key = "spr";
+                e.id = (a == Action.PRESS ? "press-" : "hold-") + "spr";
+                out.add(e);
+            }
+
+            // Ajouter jmp si coché et pas déjà dans les specs
+            if (checkJmp && !tokenMentionsKey(specs, "jmp")) {
+                Action a = expectedKeysLastTick.contains("jmp") ? Action.HOLD : Action.PRESS;
+                Expectation e = new Expectation();
+                e.mode = Mode.REQUIRED;
+                e.action = a;
+                e.key = "jmp";
+                e.id = (a == Action.PRESS ? "press-" : "hold-") + "jmp";
+                out.add(e);
+            }
+
+            // Ajouter snk si coché et pas déjà dans les specs
+            if (checkSnk && !tokenMentionsKey(specs, "snk")) {
+                Action a = expectedKeysLastTick.contains("snk") ? Action.HOLD : Action.PRESS;
+                Expectation e = new Expectation();
+                e.mode = Mode.REQUIRED;
+                e.action = a;
+                e.key = "snk";
+                e.id = (a == Action.PRESS ? "press-" : "hold-") + "snk";
+                out.add(e);
+            }
         }
 
         return out;
     }
 
     private boolean containsWait(List<Expectation> exps) {
-        for (int i = 0; i < exps.size(); i++) if (exps.get(i).action == Action.WAIT) return true;
-        return false;
+        return exps.stream().anyMatch(e -> e.action == Action.WAIT);
     }
-
-    // ---------------- Satisfaction ----------------
 
     private boolean isSatisfiedThisTick(Minecraft mc, Expectation e, List<TokenSpec> specsThisTick) {
         if (e.action == Action.WAIT) {
-            boolean fullSprint = InputCheckerConfig.get().fullSprint;
+            CheckElement active = ElementStore.getActive();
+            boolean checkSpr = active != null && tickIndex < active.checkSprint.size() && active.checkSprint.get(tickIndex);
+            boolean checkJmp = active != null && tickIndex < active.checkJump.size() && active.checkJump.get(tickIndex);
+            boolean checkSnk = active != null && tickIndex < active.checkSneak.size() && active.checkSneak.get(tickIndex);
 
-            List<String> checkKeys = new ArrayList<String>(Arrays.asList("w","a","s","d","jump","sneak"));
-            if (!fullSprint) checkKeys.add("sprint");
+            List<String> checkKeys = new ArrayList<>(Arrays.asList("w", "a", "s", "d"));
+            if (checkJmp) checkKeys.add("jmp");
+            if (checkSpr) checkKeys.add("spr");
+            if (checkSnk) checkKeys.add("snk");
 
-            for (int i = 0; i < checkKeys.size(); i++) {
-                String k = checkKeys.get(i);
-                if (tokenIgnoresKey(specsThisTick, k)) continue;
-                if (isKeyDown(mc, k)) return false;
+            for (String k : checkKeys) {
+                if (isKeyDown(mc, k)) {
+                    return false;
+                }
             }
             return true;
         }
@@ -383,98 +472,129 @@ public class InputRuntimeChecker {
         boolean down = isKeyDown(mc, e.key);
         if (e.action == Action.HOLD) return down;
 
-        boolean prev = prevDown.containsKey(e.key) ? prevDown.get(e.key).booleanValue() : false;
+        boolean prev = prevDown.getOrDefault(e.key, false);
         return down && !prev;
     }
 
-    // ---------------- Unexpected detection ----------------
-
     private Set<String> computeUnexpected(Minecraft mc, List<TokenSpec> specs) {
-        Set<String> unexpected = new LinkedHashSet<String>();
+        Set<String> unexpected = new LinkedHashSet<>();
+        CheckElement active = ElementStore.getActive();
 
-        boolean fullSprint = InputCheckerConfig.get().fullSprint;
+        boolean checkSpr = active != null && tickIndex < active.checkSprint.size() && active.checkSprint.get(tickIndex);
+        boolean checkJmp = active != null && tickIndex < active.checkJump.size() && active.checkJump.get(tickIndex);
+        boolean checkSnk = active != null && tickIndex < active.checkSneak.size() && active.checkSneak.get(tickIndex);
 
-        boolean sprintMentioned = tokenMentionsKey(specs, "sprint");
-        boolean sprintIgnoredByDefault = fullSprint && !sprintMentioned;
+        boolean noSpr = active != null && tickIndex < active.noSprint.size() && active.noSprint.get(tickIndex);
+        boolean noJmp = active != null && tickIndex < active.noJump.size() && active.noJump.get(tickIndex);
+        boolean noSnk = active != null && tickIndex < active.noSneak.size() && active.noSneak.get(tickIndex);
 
         for (String k : keysAll()) {
+            // Si la touche est mentionnée dans les specs, skip (elle est expected)
+            if (tokenMentionsKey(specs, k)) {
+                continue;
+            }
 
-            if (tokenIgnoresKey(specs, k)) continue;
+            // Si la touche est cochée via checkbox, skip (elle est dans les expectations maintenant)
+            if ("spr".equals(k) && checkSpr) {
+                continue;
+            }
+            if ("jmp".equals(k) && checkJmp) {
+                continue;
+            }
+            if ("snk".equals(k) && checkSnk) {
+                continue;
+            }
 
-            if ("sprint".equals(k) && sprintIgnoredByDefault) continue;
+            // Vérifier si la touche est interdite (colonnes "no")
+            if ("spr".equals(k) && noSpr) {
+                boolean down = isKeyDown(mc, k);
+                if (down) {
+                    boolean prev = prevDown.getOrDefault(k, false);
+                    boolean pressed = down && !prev;
+                    unexpected.add((pressed ? "press-" : "hold-") + k);
+                }
+                continue;
+            }
+            if ("jmp".equals(k) && noJmp) {
+                boolean down = isKeyDown(mc, k);
+                if (down) {
+                    boolean prev = prevDown.getOrDefault(k, false);
+                    boolean pressed = down && !prev;
+                    unexpected.add((pressed ? "press-" : "hold-") + k);
+                }
+                continue;
+            }
+            if ("snk".equals(k) && noSnk) {
+                boolean down = isKeyDown(mc, k);
+                if (down) {
+                    boolean prev = prevDown.getOrDefault(k, false);
+                    boolean pressed = down && !prev;
+                    unexpected.add((pressed ? "press-" : "hold-") + k);
+                }
+                continue;
+            }
 
-            if (tokenMentionsKey(specs, k)) continue;
+            boolean shouldCheck = false;
+            // w, a, s, d sont TOUJOURS vérifiés
+            if ("w".equals(k) || "a".equals(k) || "s".equals(k) || "d".equals(k)) {
+                shouldCheck = true;
+            }
+
+            if (!shouldCheck) {
+                continue;
+            }
 
             boolean down = isKeyDown(mc, k);
-            if (!down) continue;
-
-            boolean prev = prevDown.containsKey(k) ? prevDown.get(k).booleanValue() : false;
-            boolean pressed = down && !prev;
-
-            unexpected.add((pressed ? "press-" : "hold-") + k);
+            if (down) {
+                boolean prev = prevDown.getOrDefault(k, false);
+                boolean pressed = down && !prev;
+                unexpected.add((pressed ? "press-" : "hold-") + k);
+            }
         }
 
         return unexpected;
     }
 
     private boolean tokenMentionsKey(List<TokenSpec> specs, String key) {
-        for (int i = 0; i < specs.size(); i++) {
-            TokenSpec ts = specs.get(i);
-            if (!ts.isWait && key.equals(ts.key)) return true;
-        }
-        return false;
+        return specs.stream().anyMatch(s -> !s.isWait && key.equals(s.key));
     }
-
-    private boolean tokenIgnoresKey(List<TokenSpec> specs, String key) {
-        for (int i = 0; i < specs.size(); i++) {
-            TokenSpec ts = specs.get(i);
-            if (!ts.isWait && ts.mode == Mode.IGNORE && key.equals(ts.key)) return true;
-        }
-        return false;
-    }
-
-    // ---------------- Lenient windows ----------------
 
     private void updateLenientWindows(Minecraft mc, List<TokenSpec> specs) {
-        for (int i = 0; i < specs.size(); i++) {
-            TokenSpec ts = specs.get(i);
-            if (ts.isWait) continue;
-            if (ts.mode != Mode.LENIENT) continue;
+        for (TokenSpec ts : specs) {
+            if (!ts.isWait && ts.mode == Mode.LENIENT) {
+                LenientWindow w = lenientWindows.get(ts.key);
+                if (w == null) {
+                    w = new LenientWindow();
+                    w.startTick = tickIndex;
+                    w.lastTick = tickIndex;
+                    w.satisfied = false;
+                    lenientWindows.put(ts.key, w);
+                } else {
+                    w.lastTick = tickIndex;
+                }
 
-            LenientWindow w = lenientWindows.get(ts.key);
-            if (w == null) {
-                w = new LenientWindow();
-                w.startTick = tickIndex;
-                w.lastTick = tickIndex;
-                w.satisfied = false;
-                lenientWindows.put(ts.key, w);
-            } else {
-                w.lastTick = tickIndex;
+                if (isKeyDown(mc, ts.key)) w.satisfied = true;
             }
-
-            if (isKeyDown(mc, ts.key)) w.satisfied = true;
         }
     }
 
     private String resolveLenientWindowsEndingThisTick(List<TokenSpec> specsThisTick) {
-        Set<String> lenientNow = new HashSet<String>();
-        for (int i = 0; i < specsThisTick.size(); i++) {
-            TokenSpec ts = specsThisTick.get(i);
-            if (!ts.isWait && ts.mode == Mode.LENIENT) lenientNow.add(ts.key);
+        Set<String> lenientNow = new HashSet<>();
+        for (TokenSpec ts : specsThisTick) {
+            if (!ts.isWait && ts.mode == Mode.LENIENT) {
+                lenientNow.add(ts.key);
+            }
         }
 
-        List<String> toClose = new ArrayList<String>();
+        List<String> toClose = new ArrayList<>();
         for (String key : lenientWindows.keySet()) {
             if (!lenientNow.contains(key)) toClose.add(key);
         }
 
-        for (int i = 0; i < toClose.size(); i++) {
-            String key = toClose.get(i);
+        for (String key : toClose) {
             LenientWindow w = lenientWindows.remove(key);
             if (w != null && !w.satisfied) {
-                int a = w.startTick + 1;
-                int b = w.lastTick + 1;
-                return "Lenient input not triggered: [" + key + "] in ticks " + a + "-" + b;
+                return "Lenient input not triggered: [" + key + "] in ticks " + (w.startTick + 1) + "-" + (w.lastTick + 1);
             }
         }
         return null;
@@ -482,13 +602,11 @@ public class InputRuntimeChecker {
 
     private String closeAllLenientWindowsIfNeeded() {
         for (Map.Entry<String, LenientWindow> it : lenientWindows.entrySet()) {
-            LenientWindow w = it.getValue();
-            if (w != null && !w.satisfied) {
-                int a = w.startTick + 1;
-                int b = w.lastTick + 1;
+            if (it.getValue() != null && !it.getValue().satisfied) {
+                LenientWindow w = it.getValue();
                 String key = it.getKey();
                 lenientWindows.clear();
-                return "Lenient input not triggered: [" + key + "] in ticks " + a + "-" + b;
+                return "Lenient input not triggered: [" + key + "] in ticks " + (w.startTick + 1) + "-" + (w.lastTick + 1);
             }
         }
         lenientWindows.clear();
@@ -497,36 +615,48 @@ public class InputRuntimeChecker {
 
     private void failStop(String elementName, String reason) {
         HudLog.clear();
-        HudLog.setStatus("§cFAIL (" + elementName + ")");
-        HudLog.push("§7Right click to restart");
-        HudLog.push("§7" + reason);
-
-        // STATS
+        HudLog.setStatus("§cFail " + elementName + ":");
+        HudLog.push(ColorConfig.getContentColorCode() + reason);
         StatsTracker.recordFail(reason);
-
         resetAll();
     }
 
-    // ---------------- Start condition ----------------
-
     private boolean hasAnyRelevantActivityThisTick(Minecraft mc, List<TokenSpec> specs) {
-        boolean fullSprint = InputCheckerConfig.get().fullSprint;
-        boolean allowSprint = (!fullSprint) || tokenMentionsKey(specs, "sprint");
-
-        for (String k : Arrays.asList("w","a","s","d","jump","sneak")) {
+        // Vérifier les touches de base (toujours checked)
+        for (String k : Arrays.asList("w", "a", "s", "d")) {
             boolean down = isKeyDown(mc, k);
-            boolean prev = prevDown.containsKey(k) ? prevDown.get(k).booleanValue() : false;
+            boolean prev = prevDown.getOrDefault(k, false);
             if (down && !prev) return true;
         }
-        if (allowSprint) {
-            boolean down = isKeyDown(mc, "sprint");
-            boolean prev = prevDown.containsKey("sprint") ? prevDown.get("sprint").booleanValue() : false;
-            if (down && !prev) return true;
+
+        // Vérifier les touches cochées via checkboxes
+        CheckElement active = ElementStore.getActive();
+        if (active != null && tickIndex < active.tickInputs.size()) {
+            boolean checkSpr = tickIndex < active.checkSprint.size() && active.checkSprint.get(tickIndex);
+            boolean checkJmp = tickIndex < active.checkJump.size() && active.checkJump.get(tickIndex);
+            boolean checkSnk = tickIndex < active.checkSneak.size() && active.checkSneak.get(tickIndex);
+
+            if (checkSpr) {
+                boolean down = isKeyDown(mc, "spr");
+                boolean prev = prevDown.getOrDefault("spr", false);
+                if (down && !prev) return true;
+            }
+
+            if (checkJmp) {
+                boolean down = isKeyDown(mc, "jmp");
+                boolean prev = prevDown.getOrDefault("jmp", false);
+                if (down && !prev) return true;
+            }
+
+            if (checkSnk) {
+                boolean down = isKeyDown(mc, "snk");
+                boolean prev = prevDown.getOrDefault("snk", false);
+                if (down && !prev) return true;
+            }
         }
+
         return false;
     }
-
-    // ---------------- Keys / IO ----------------
 
     private void resetAll() {
         armed = false;
@@ -548,37 +678,26 @@ public class InputRuntimeChecker {
         if (key == null) return null;
         key = key.toLowerCase();
 
-        if (key.equals("w")) return mc.gameSettings.keyBindForward;
-        if (key.equals("a")) return mc.gameSettings.keyBindLeft;
-        if (key.equals("s")) return mc.gameSettings.keyBindBack;
-        if (key.equals("d")) return mc.gameSettings.keyBindRight;
-
-        if (key.equals("jump") || key.equals("space")) return mc.gameSettings.keyBindJump;
-        if (key.equals("sneak") || key.equals("shift")) return mc.gameSettings.keyBindSneak;
-        if (key.equals("sprint") || key.equals("ctrl")) return mc.gameSettings.keyBindSprint;
-
-        return null;
+        switch (key) {
+            case "w": return mc.gameSettings.keyBindForward;
+            case "a": return mc.gameSettings.keyBindLeft;
+            case "s": return mc.gameSettings.keyBindBack;
+            case "d": return mc.gameSettings.keyBindRight;
+            case "jmp": return mc.gameSettings.keyBindJump;
+            case "snk": return mc.gameSettings.keyBindSneak;
+            case "spr": return mc.gameSettings.keyBindSprint;
+            default: return null;
+        }
     }
 
     private boolean isSupportedKey(String key) {
         return "w".equals(key) || "a".equals(key) || "s".equals(key) || "d".equals(key)
-                || "jump".equals(key) || "sneak".equals(key) || "sprint".equals(key);
+                || "jmp".equals(key) || "snk".equals(key) || "spr".equals(key);
     }
 
     private String normalizeKey(String key) {
         if (key == null) return "";
         key = key.trim().toLowerCase();
-
-        // accept old words too
-        if (key.equals("space")) return "jump";
-        if (key.equals("ctrl")) return "sprint";
-        if (key.equals("shift")) return "sneak";
-
-        // accept common aliases (already normalized)
-        if (key.equals("jump")) return "jump";
-        if (key.equals("sprint")) return "sprint";
-        if (key.equals("sneak")) return "sneak";
-
         return key;
     }
 
@@ -589,20 +708,22 @@ public class InputRuntimeChecker {
     }
 
     private List<String> keysAll() {
-        return Arrays.asList("w","a","s","d","jump","sneak","sprint");
+        return Arrays.asList("w", "a", "s", "d", "jmp", "snk", "spr");
     }
 
     private Set<String> buildActualDown(Minecraft mc) {
-        Set<String> s = new LinkedHashSet<String>();
-        for (String k : keysAll()) if (isKeyDown(mc, k)) s.add(k);
+        Set<String> s = new LinkedHashSet<>();
+        for (String k : keysAll()) {
+            if (isKeyDown(mc, k)) s.add(k);
+        }
         return s;
     }
 
     private Set<String> buildActualPressed(Minecraft mc) {
-        Set<String> s = new LinkedHashSet<String>();
+        Set<String> s = new LinkedHashSet<>();
         for (String k : keysAll()) {
             boolean down = isKeyDown(mc, k);
-            boolean prev = prevDown.containsKey(k) ? prevDown.get(k).booleanValue() : false;
+            boolean prev = prevDown.getOrDefault(k, false);
             if (down && !prev) s.add(k);
         }
         return s;
@@ -626,3 +747,4 @@ public class InputRuntimeChecker {
         return sb.toString();
     }
 }
+

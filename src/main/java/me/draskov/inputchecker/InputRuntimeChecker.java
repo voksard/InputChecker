@@ -9,6 +9,8 @@ public class InputRuntimeChecker {
     private boolean armed = false;
     private boolean started = false;
     private int tickIndex = 0;
+    private boolean hasStartedBefore = false; // Track si le check a déjà commencé pour cet élément
+    private String lastActiveElementId = null; // Track le dernier élément actif
 
     private final Map<String, Boolean> prevDown = new HashMap<>();
     private final Set<String> expectedKeysLastTick = new HashSet<>();
@@ -67,10 +69,17 @@ public class InputRuntimeChecker {
         CheckElement active = ElementStore.getActive();
         if (active == null || active.tickInputs == null || active.tickInputs.isEmpty()) {
             HudLog.clear();
-            HudLog.setStatus("§bInputchecker:");
+            HudLog.setStatus(ColorConfig.getTitleColorCode() + "Inputchecker check:");
             HudLog.push(ColorConfig.getContentColorCode() + "No active element");
             resetAll();
             return;
+        }
+
+        // Vérifier si c'est un nouvel élément ou le même
+        boolean isNewElement = !active.id.equals(lastActiveElementId);
+        if (isNewElement) {
+            hasStartedBefore = false;
+            lastActiveElementId = active.id;
         }
 
         armed = true;
@@ -88,8 +97,13 @@ public class InputRuntimeChecker {
         lastWarnTickIndex = -1;
 
         HudLog.clear();
-        HudLog.setStatus("§bInputchecker:");
-        HudLog.push(ColorConfig.getContentColorCode() + "Running " + active.name);
+        HudLog.setStatus(ColorConfig.getTitleColorCode() + "Checking " + active.name + ":");
+
+        // Afficher "Running..." immédiatement au clic droit
+        HudLog.push(ColorConfig.getContentColorCode() + "Running...");
+
+        // Marquer que le check a commencé
+        hasStartedBefore = true;
     }
 
     public void tick(Minecraft mc) {
@@ -100,7 +114,7 @@ public class InputRuntimeChecker {
         CheckElement active = ElementStore.getActive();
         if (active == null || active.tickInputs == null || active.tickInputs.isEmpty()) {
             HudLog.clear();
-            HudLog.setStatus("§bInputchecker:");
+            HudLog.setStatus(ColorConfig.getTitleColorCode() + "Inputchecker check:");
             resetAll();
             return;
         }

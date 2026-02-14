@@ -41,6 +41,7 @@ public class InputRuntimeChecker {
         Mode mode;
         String key;
         boolean isWait;
+        Action expectedAction; // Pour LENIENT : PRESS ou RELEASE
     }
 
     private static class Expectation {
@@ -51,7 +52,7 @@ public class InputRuntimeChecker {
     }
 
     private enum Mode { REQUIRED, LENIENT, IGNORE }
-    private enum Action { PRESS, HOLD, WAIT }
+    private enum Action { PRESS, HOLD, WAIT, RELEASE }
 
     private static class TickEntry {
         int tick1;
@@ -416,9 +417,15 @@ public class InputRuntimeChecker {
             }
 
             Mode mode = Mode.REQUIRED;
-            if (token.startsWith("lnt-")) {
+            Action expectedAction = null;
+            if (token.startsWith("prs-")) {
                 mode = Mode.LENIENT;
-                token = token.substring("lnt-".length());
+                expectedAction = Action.PRESS;
+                token = token.substring("prs-".length());
+            } else if (token.startsWith("rls-")) {
+                mode = Mode.LENIENT;
+                expectedAction = Action.RELEASE;
+                token = token.substring("rls-".length());
             } else if (token.startsWith("ignore-")) {
                 mode = Mode.IGNORE;
                 token = token.substring("ignore-".length());
@@ -435,6 +442,7 @@ public class InputRuntimeChecker {
             ts.mode = mode;
             ts.isWait = false;
             ts.key = key;
+            ts.expectedAction = expectedAction; // Pour LENIENT
             out.add(ts);
         }
 
@@ -636,23 +644,21 @@ public class InputRuntimeChecker {
                     w.lastTick = tickIndex;
                     w.satisfied = false;
 
-                    // Déterminer si c'est un PRESS ou HOLD
-                    // Si la touche était déjà pressée au tick précédent (dans expectedKeysLastTick), c'est un HOLD
-                    // Sinon c'est un PRESS
-                    if (expectedKeysLastTick.contains(ts.key)) {
-                        w.expectedAction = Action.HOLD;
-                        // Pour un HOLD, vérifier qu'il y a un relâchement de la touche
-                        boolean down = isKeyDown(mc, ts.key);
-                        if (!down) {
-                            // La touche a été relâchée → satisfait
-                            w.satisfied = true;
-                        }
-                    } else {
-                        w.expectedAction = Action.PRESS;
-                        // Pour un PRESS, on doit vérifier qu'il y a une nouvelle pression
+                    // Utiliser l'expectedAction du TokenSpec
+                    w.expectedAction = ts.expectedAction;
+
+                    if (ts.expectedAction == Action.PRESS) {
+                        // Pour un PRESS, vérifier qu'il y a une nouvelle pression
                         boolean down = isKeyDown(mc, ts.key);
                         boolean prev = prevDown.getOrDefault(ts.key, false);
                         if (down && !prev) {
+                            w.satisfied = true;
+                        }
+                    } else if (ts.expectedAction == Action.RELEASE) {
+                        // Pour un RELEASE, vérifier qu'il y a un relâchement
+                        boolean down = isKeyDown(mc, ts.key);
+                        if (!down) {
+                            // La touche a été relâchée → satisfait
                             w.satisfied = true;
                         }
                     }
@@ -671,8 +677,8 @@ public class InputRuntimeChecker {
                             if (down && !prev) {
                                 w.satisfied = true;
                             }
-                        } else {
-                            // Pour un HOLD, vérifier qu'il y a un relâchement
+                        } else if (w.expectedAction == Action.RELEASE) {
+                            // Pour un RELEASE, vérifier qu'il y a un relâchement
                             boolean down = isKeyDown(mc, ts.key);
                             if (!down) {
                                 // La touche a été relâchée → satisfait
@@ -925,7 +931,10 @@ public class InputRuntimeChecker {
                         HudLog.setStatus("§cInvalid configuration:");
                         // Inverser l'ordre car HudLog ajoute au début (0)
                         HudLog.pushValidationText("at least 2 consecutive ticks");
-                        HudLog.pushValidationError(String.valueOf(i + 1), ts.key);
+
+                        // Déterminer le prefix (prs ou rls)
+                        String prefix = (ts.expectedAction == Action.PRESS) ? "prs" : "rls";
+                        HudLog.pushValidationError(String.valueOf(i + 1), prefix + "-" + ts.key);
                         return false;
                     }
                 }
@@ -936,12 +945,12 @@ public class InputRuntimeChecker {
     }
 
     /**
-     * Vérifie si un input contient un lenient spécifique
+     * Vérifie si un input contient un lenient spécifique (prs- ou rls-)
      */
     private boolean containsLenientKey(String input, String key) {
         if (input == null) return false;
         input = input.toLowerCase();
-        return input.contains("lnt-" + key);
+        return input.contains("prs-" + key) || input.contains("rls-" + key);
     }
 }
 

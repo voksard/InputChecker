@@ -151,18 +151,18 @@ public class GuiEditElement extends GuiScreen {
 
             // Désactiver les checkboxes en conflit
             String input = v != null ? v.toLowerCase() : "";
-            // Sprint désactivé si lnt-spr OU si no-sprint est coché
-            disableSprintBoxes.add(input.contains("lnt-spr") || (noSpr != null && noSpr));
-            // Jump désactivé si lnt-jmp OU si no-jump est coché
-            disableJumpBoxes.add(input.contains("lnt-jmp") || (noJmp != null && noJmp));
-            // Sneak désactivé si lnt-snk OU si no-sneak est coché
-            disableSneakBoxes.add(input.contains("lnt-snk") || (noSnk != null && noSnk));
-            // No-sprint désactivé si lnt-spr OU si sprint est coché
-            disableNoSprintBoxes.add(input.contains("lnt-spr") || (checkSpr != null && checkSpr));
-            // No-jump désactivé si lnt-jmp OU si jump est coché
-            disableNoJumpBoxes.add(input.contains("lnt-jmp") || (checkJmp != null && checkJmp));
-            // No-sneak désactivé si lnt-snk OU si sneak est coché
-            disableNoSneakBoxes.add(input.contains("lnt-snk") || (checkSnk != null && checkSnk));
+            // Sprint désactivé si prs-spr/rls-spr OU si no-sprint est coché
+            disableSprintBoxes.add(input.contains("prs-spr") || input.contains("rls-spr") || (noSpr != null && noSpr));
+            // Jump désactivé si prs-jmp/rls-jmp OU si no-jump est coché
+            disableJumpBoxes.add(input.contains("prs-jmp") || input.contains("rls-jmp") || (noJmp != null && noJmp));
+            // Sneak désactivé si prs-snk/rls-snk OU si no-sneak est coché
+            disableSneakBoxes.add(input.contains("prs-snk") || input.contains("rls-snk") || (noSnk != null && noSnk));
+            // No-sprint désactivé si prs-spr/rls-spr OU si sprint est coché
+            disableNoSprintBoxes.add(input.contains("prs-spr") || input.contains("rls-spr") || (checkSpr != null && checkSpr));
+            // No-jump désactivé si prs-jmp/rls-jmp OU si jump est coché
+            disableNoJumpBoxes.add(input.contains("prs-jmp") || input.contains("rls-jmp") || (checkJmp != null && checkJmp));
+            // No-sneak désactivé si prs-snk/rls-snk OU si sneak est coché
+            disableNoSneakBoxes.add(input.contains("prs-snk") || input.contains("rls-snk") || (checkSnk != null && checkSnk));
 
             // Les boutons Insert/Duplicate/Delete et les checkboxes sont maintenant dessinés manuellement dans drawScreen
         }
@@ -394,28 +394,32 @@ public class GuiEditElement extends GuiScreen {
             return;
         }
 
-        // Gérer les touches spéciales pour lnt-snk, lnt-jmp, lnt-spr
-        // Shift → lnt-snk
+        // Gérer les touches spéciales pour prs-snk/rls-snk, prs-jmp/rls-jmp, prs-spr/rls-spr
+        // Shift → auto-compléter prs-snk ou rls-snk selon le contexte
         if (keyCode == Keyboard.KEY_LSHIFT || keyCode == Keyboard.KEY_RSHIFT) {
             // Bloquer si snk ou nk est coché sur cette ligne
             if (element.checkSneak.get(tickIdx) || element.noSneak.get(tickIdx)) {
-                return; // Ne pas permettre lnt-snk si snk ou nk est coché
+                return; // Ne pas permettre prs-snk/rls-snk si snk ou nk est coché
             }
 
-            // Vérifier si lnt-snk existe déjà
-            if (inputAlreadyExists(current, "lnt-snk")) {
-                return; // Bloquer le doublon
-            }
-
-            String toAdd = current.endsWith("lnt-") ? "lnt-snk" : "lnt-snk";
-
-            if (current.endsWith("lnt-")) {
+            // Déterminer si on termine "prs-" ou "rls-"
+            if (current.endsWith("prs-")) {
+                // Vérifier si prs-snk existe déjà
+                if (inputAlreadyExists(current, "prs-snk")) {
+                    return; // Bloquer le doublon
+                }
                 tf.setText(current + "snk");
-            } else if (current.isEmpty()) {
-                tf.setText("lnt-snk");
+            } else if (current.endsWith("rls-")) {
+                // Vérifier si rls-snk existe déjà
+                if (inputAlreadyExists(current, "rls-snk")) {
+                    return; // Bloquer le doublon
+                }
+                tf.setText(current + "snk");
             } else {
-                tf.setText(current + "+lnt-snk");
+                // Par défaut, ne rien faire si pas dans un contexte prs- ou rls-
+                return;
             }
+
             element.tickInputs.set(tickIdx, tf.getText());
             sanitizeCheckboxesForTickInput(tickIdx);
             updateCheckboxesInMemory(tickIdx);
@@ -423,25 +427,31 @@ public class GuiEditElement extends GuiScreen {
             return;
         }
 
-        // Space → lnt-jmp
+        // Space → auto-compléter prs-jmp ou rls-jmp selon le contexte
         if (keyCode == Keyboard.KEY_SPACE) {
             // Bloquer si jmp ou nj est coché sur cette ligne
             if (element.checkJump.get(tickIdx) || element.noJump.get(tickIdx)) {
-                return; // Ne pas permettre lnt-jmp si jmp ou nj est coché
+                return; // Ne pas permettre prs-jmp/rls-jmp si jmp ou nj est coché
             }
 
-            // Vérifier si lnt-jmp existe déjà
-            if (inputAlreadyExists(current, "lnt-jmp")) {
-                return; // Bloquer le doublon
-            }
-
-            if (current.endsWith("lnt-")) {
+            // Déterminer si on termine "prs-" ou "rls-"
+            if (current.endsWith("prs-")) {
+                // Vérifier si prs-jmp existe déjà
+                if (inputAlreadyExists(current, "prs-jmp")) {
+                    return; // Bloquer le doublon
+                }
                 tf.setText(current + "jmp");
-            } else if (current.isEmpty()) {
-                tf.setText("lnt-jmp");
+            } else if (current.endsWith("rls-")) {
+                // Vérifier si rls-jmp existe déjà
+                if (inputAlreadyExists(current, "rls-jmp")) {
+                    return; // Bloquer le doublon
+                }
+                tf.setText(current + "jmp");
             } else {
-                tf.setText(current + "+lnt-jmp");
+                // Par défaut, ne rien faire si pas dans un contexte prs- ou rls-
+                return;
             }
+
             element.tickInputs.set(tickIdx, tf.getText());
             sanitizeCheckboxesForTickInput(tickIdx);
             updateCheckboxesInMemory(tickIdx);
@@ -449,24 +459,45 @@ public class GuiEditElement extends GuiScreen {
             return;
         }
 
-        // Ctrl → lnt-spr
+        // Ctrl → auto-compléter prs-spr ou rls-spr selon le contexte
         if (keyCode == Keyboard.KEY_LCONTROL || keyCode == Keyboard.KEY_RCONTROL) {
             // Bloquer si spr ou ns est coché sur cette ligne
             if (element.checkSprint.get(tickIdx) || element.noSprint.get(tickIdx)) {
-                return; // Ne pas permettre lnt-spr si spr ou ns est coché
+                return; // Ne pas permettre prs-spr/rls-spr si spr ou ns est coché
             }
 
-            // Vérifier si lnt-spr existe déjà
-            if (inputAlreadyExists(current, "lnt-spr")) {
-                return; // Bloquer le doublon
-            }
-
-            if (current.endsWith("lnt-")) {
+            // Déterminer si on termine "prs-" ou "rls-"
+            if (current.endsWith("prs-")) {
+                // Vérifier si prs-spr existe déjà
+                if (inputAlreadyExists(current, "prs-spr")) {
+                    return; // Bloquer le doublon
+                }
                 tf.setText(current + "spr");
-            } else if (current.isEmpty()) {
-                tf.setText("lnt-spr");
+            } else if (current.endsWith("rls-")) {
+                // Vérifier si rls-spr existe déjà
+                if (inputAlreadyExists(current, "rls-spr")) {
+                    return; // Bloquer le doublon
+                }
+                tf.setText(current + "spr");
             } else {
-                tf.setText(current + "+lnt-spr");
+                // Par défaut, ne rien faire si pas dans un contexte prs- ou rls-
+                return;
+            }
+
+            element.tickInputs.set(tickIdx, tf.getText());
+            sanitizeCheckboxesForTickInput(tickIdx);
+            updateCheckboxesInMemory(tickIdx);
+            // Pas de sauvegarde automatique
+            return;
+        }
+
+        // Gérer la touche 'P' pour auto-compléter "prs-"
+        if (keyCode == Keyboard.KEY_P) {
+            String toAdd = "prs-";
+            if (current.isEmpty()) {
+                tf.setText(toAdd);
+            } else {
+                tf.setText(current + "+" + toAdd);
             }
             element.tickInputs.set(tickIdx, tf.getText());
             sanitizeCheckboxesForTickInput(tickIdx);
@@ -475,9 +506,9 @@ public class GuiEditElement extends GuiScreen {
             return;
         }
 
-        // Gérer la touche 'L' pour auto-compléter "lnt-"
-        if (keyCode == Keyboard.KEY_L) {
-            String toAdd = "lnt-";
+        // Gérer la touche 'R' pour auto-compléter "rls-"
+        if (keyCode == Keyboard.KEY_R) {
+            String toAdd = "rls-";
             if (current.isEmpty()) {
                 tf.setText(toAdd);
             } else {
@@ -498,8 +529,8 @@ public class GuiEditElement extends GuiScreen {
                 return; // Bloquer le doublon (ex: w+w)
             }
 
-            // Vérifier si on est après "lnt-"
-            if (current.endsWith("lnt-")) {
+            // Vérifier si on est après "prs-" ou "rls-"
+            if (current.endsWith("prs-") || current.endsWith("rls-")) {
                 tf.setText(current + key);
             } else if (current.isEmpty()) {
                 tf.setText(key);
@@ -513,13 +544,15 @@ public class GuiEditElement extends GuiScreen {
             return;
         }
 
-        // Gérer les touches pour spr/jmp/snk après "lnt-"
-        if (current.endsWith("lnt-")) {
+        // Gérer les touches pour spr/jmp/snk après "prs-" ou "rls-"
+        if (current.endsWith("prs-") || current.endsWith("rls-")) {
             String lenientKey = getLenientKeyName(keyCode);
             if (lenientKey != null) {
-                String fullInput = "lnt-" + lenientKey;
+                // Déterminer le prefix
+                String prefix = current.endsWith("prs-") ? "prs-" : "rls-";
+                String fullInput = prefix + lenientKey;
 
-                // Vérifier si lnt-xxx existe déjà
+                // Vérifier si prs-xxx ou rls-xxx existe déjà
                 if (inputAlreadyExists(current, fullInput)) {
                     return; // Bloquer le doublon
                 }
@@ -607,42 +640,42 @@ public class GuiEditElement extends GuiScreen {
         boolean noJmp = element.noJump.get(tickIdx);
         boolean noSnk = element.noSneak.get(tickIdx);
 
-        // Sprint désactivé si lnt-spr OU si no-sprint est coché
-        disableSprintBoxes.set(row, input.contains("lnt-spr") || noSpr);
-        // Jump désactivé si lnt-jmp OU si no-jump est coché
-        disableJumpBoxes.set(row, input.contains("lnt-jmp") || noJmp);
-        // Sneak désactivé si lnt-snk OU si no-sneak est coché
-        disableSneakBoxes.set(row, input.contains("lnt-snk") || noSnk);
+        // Sprint désactivé si prs-spr/rls-spr OU si no-sprint est coché
+        disableSprintBoxes.set(row, input.contains("prs-spr") || input.contains("rls-spr") || noSpr);
+        // Jump désactivé si prs-jmp/rls-jmp OU si no-jump est coché
+        disableJumpBoxes.set(row, input.contains("prs-jmp") || input.contains("rls-jmp") || noJmp);
+        // Sneak désactivé si prs-snk/rls-snk OU si no-sneak est coché
+        disableSneakBoxes.set(row, input.contains("prs-snk") || input.contains("rls-snk") || noSnk);
         // No-sprint désactivé si lnt-spr OU si sprint est coché
-        disableNoSprintBoxes.set(row, input.contains("lnt-spr") || checkSpr);
-        // No-jump désactivé si lnt-jmp OU si jump est coché
-        disableNoJumpBoxes.set(row, input.contains("lnt-jmp") || checkJmp);
-        // No-sneak désactivé si lnt-snk OU si sneak est coché
-        disableNoSneakBoxes.set(row, input.contains("lnt-snk") || checkSnk);
+        disableNoSprintBoxes.set(row, input.contains("prs-spr") || input.contains("rls-spr") || checkSpr);
+        // No-jump désactivé si prs-jmp/rls-jmp OU si jump est coché
+        disableNoJumpBoxes.set(row, input.contains("prs-jmp") || input.contains("rls-jmp") || checkJmp);
+        // No-sneak désactivé si prs-snk/rls-snk OU si sneak est coché
+        disableNoSneakBoxes.set(row, input.contains("prs-snk") || input.contains("rls-snk") || checkSnk);
     }
 
     /**
-     * Décoche automatiquement les checkboxes conflictuelles avec lnt-* pour un tick
+     * Décoche automatiquement les checkboxes conflictuelles avec prs- ou rls- pour un tick
      */
     private void sanitizeCheckboxesForTickInput(int tickIdx) {
         if (tickIdx < 0 || tickIdx >= element.tickInputs.size()) return;
 
         String input = element.tickInputs.get(tickIdx).toLowerCase();
 
-        // Si lnt-jmp est présent, décocher checkJump et noJump
-        if (input.contains("lnt-jmp")) {
+        // Si prs-jmp ou rls-jmp est présent, décocher checkJump et noJump
+        if (input.contains("prs-jmp") || input.contains("rls-jmp")) {
             element.checkJump.set(tickIdx, false);
             element.noJump.set(tickIdx, false);
         }
 
-        // Si lnt-spr est présent, décocher checkSprint et noSprint
-        if (input.contains("lnt-spr")) {
+        // Si prs-spr ou rls-spr est présent, décocher checkSprint et noSprint
+        if (input.contains("prs-spr") || input.contains("rls-spr")) {
             element.checkSprint.set(tickIdx, false);
             element.noSprint.set(tickIdx, false);
         }
 
-        // Si lnt-snk est présent, décocher checkSneak et noSneak
-        if (input.contains("lnt-snk")) {
+        // Si prs-snk ou rls-snk est présent, décocher checkSneak et noSneak
+        if (input.contains("prs-snk") || input.contains("rls-snk")) {
             element.checkSneak.set(tickIdx, false);
             element.noSneak.set(tickIdx, false);
         }
@@ -915,8 +948,8 @@ public class GuiEditElement extends GuiScreen {
         this.drawString(this.fontRendererObj, "ns: no sprint", 10, 120, 0xAAAAAA);
         this.drawString(this.fontRendererObj, "nj: no jump", 10, 130, 0xAAAAAA);
         this.drawString(this.fontRendererObj, "nk: no sneak", 10, 140, 0xAAAAAA);
-        this.drawString(this.fontRendererObj, "Type lnt-input", 10, 155, 0xAAAAAA);
-        this.drawString(this.fontRendererObj, "for lenient input", 10, 165, 0xAAAAAA);
+        this.drawString(this.fontRendererObj, "Type prs-input or rls-input", 10, 155, 0xAAAAAA);
+        this.drawString(this.fontRendererObj, "for pressed/released input", 10, 165, 0xAAAAAA);
 
         this.drawString(this.fontRendererObj, "Name:", cx - 140, 26, 0xCCCCCC);
         nameField.drawTextBox();

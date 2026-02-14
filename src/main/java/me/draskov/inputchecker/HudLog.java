@@ -20,7 +20,7 @@ public class HudLog {
         WARNING,           // Messages d'avertissement (couleur dorée)
         LENIENT_FAILED,    // "Lenient input not triggered: {key} in ticks {start}-{end}"
         LENIENT_FAILED_NEW, // "Expected {key} {action}" ou "between tick {start} and {end}" avec parties en color1
-        VALIDATION_ERROR   // Messages d'erreur de validation avec parties: [tick, key] pour "Tick {tick}: lnt-{key} must span" ou texte simple
+        VALIDATION_ERROR   // Messages d'erreur de validation avec parties: [tick, key] pour "Tick {tick}: prs-{key}/rls-{key} must span" ou texte simple
     }
 
     private static class HudLine {
@@ -90,13 +90,14 @@ public class HudLog {
                     }
 
                 case VALIDATION_ERROR:
-                    // Si parts existe: "Tick {tick}: lnt-{key} must span" avec tick et key en color1
+                    // Si parts existe: "Tick {tick}: {key} must span" avec tick et key en color1
+                    // key contient déjà le prefix (prs- ou rls-)
                     // Sinon: texte simple en color2
                     if (parts != null && parts.length == 2) {
                         return ColorConfig.getContentColorCode() + "Tick " +
                                ColorConfig.getTitleColorCode() + parts[0] +
                                ColorConfig.getContentColorCode() + ": " +
-                               ColorConfig.getTitleColorCode() + "lnt-" + parts[1] +
+                               ColorConfig.getTitleColorCode() + parts[1] +
                                ColorConfig.getContentColorCode() + " must span";
                     } else {
                         return ColorConfig.getContentColorCode() + content;
@@ -185,7 +186,8 @@ public class HudLog {
     }
 
     public static void pushValidationError(String tick, String key) {
-        // "Tick {tick}: lnt-{key} must span" avec tick et key en color1
+        // "Tick {tick}: {key} must span" avec tick et key en color1
+        // key contient déjà le prefix (prs- ou rls-)
         HudLine line = new HudLine(LineType.VALIDATION_ERROR, new String[]{tick, key});
         hudLines.add(0, line);
 

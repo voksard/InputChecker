@@ -131,7 +131,61 @@ public class InputCheckerCommand extends CommandBase {
             return;
         }
 
-        sendLine(sender, "§cUnknown subcommand. Use §f/inputchecker help§c.");
+        if ("export".equalsIgnoreCase(args[0])) {
+            if (args.length < 2) {
+                sendLine(sender, "§cUsage: /inputchecker export <element_name>");
+                return;
+            }
+            String elementName = String.join(" ", Arrays.copyOfRange(args, 1, args.length));
+            CheckElement element = findElementByName(elementName);
+
+            if (element == null) {
+                sendLine(sender, "§cElement not found: " + elementName);
+                return;
+            }
+
+            String filename = ElementStore.exportElement(element);
+            if (filename != null) {
+                sendLine(sender, "§aElement exported to: §f" + filename);
+                sendLine(sender, "§7File location: §fconfig/" + filename);
+            } else {
+                sendLine(sender, "§cFailed to export element");
+            }
+            return;
+        }
+
+        if ("import".equalsIgnoreCase(args[0])) {
+            if (args.length < 2) {
+                sendLine(sender, "§cUsage: /inputchecker import <filename>");
+                sendLine(sender, "§7Example: /inputchecker import myElement.json");
+                return;
+            }
+            String filename = args[1];
+            if (!filename.endsWith(".json")) {
+                filename += ".json";
+            }
+
+            CheckElement imported = ElementStore.importElement(filename);
+            if (imported != null) {
+                sendLine(sender, "§aElement imported: §f" + imported.name);
+                sendLine(sender, "§7Open the catalog (G) to see it");
+            } else {
+                sendLine(sender, "§cFailed to import element from: " + filename);
+                sendLine(sender, "§7Make sure the file exists in config/ folder");
+            }
+            return;
+        }
+
+        sendLine(sender, "§cUnknown command. Use /inputchecker help");
+    }
+
+    private CheckElement findElementByName(String name) {
+        for (CheckElement e : ElementStore.elements) {
+            if (e.name.equalsIgnoreCase(name)) {
+                return e;
+            }
+        }
+        return null;
     }
 
     private void sendHelp(ICommandSender sender) {
@@ -151,13 +205,30 @@ public class InputCheckerCommand extends CommandBase {
 
         sendLine(sender, "§7==== §eToken Types §7====");
         sendLine(sender, "§fKEY §7- Required (must press/hold this tick)");
-        sendLine(sender, "§flnt-KEY §7- Lenient (optional, but must occur at least once");
-        sendLine(sender, "              §7in the lenient window)");
+        sendLine(sender, "§fprs-KEY §7- Pressed input (must press at least once)");
+        sendLine(sender, "§frls-KEY §7- Released input (must release at least once)");
+        sendLine(sender, "§7Note: prs-/rls- must span at least 2 consecutive ticks");
         sendLine(sender, "");
 
         sendLine(sender, "§7==== §eSupported Keys §7====");
         sendLine(sender, "§fMovement: §fw, a, s, d");
         sendLine(sender, "§fSpecial: §fjmp (jump), snk (sneak), spr (sprint)");
+        sendLine(sender, "");
+
+        sendLine(sender, "§7==== §eExamples §7====");
+        sendLine(sender, "§7Standard input:");
+        sendLine(sender, "  §fw+a §7- Press W and A on this tick");
+        sendLine(sender, "");
+        sendLine(sender, "§7Pressed lenient (must press at least once):");
+        sendLine(sender, "  Tick 1: §fw+prs-d");
+        sendLine(sender, "  Tick 2: §fw+prs-d");
+        sendLine(sender, "  §7→ D must be pressed on tick 1 OR tick 2");
+        sendLine(sender, "");
+        sendLine(sender, "§7Released lenient (must release at least once):");
+        sendLine(sender, "  Tick 1: §fw+d §7(D is held)");
+        sendLine(sender, "  Tick 2: §fw+rls-d");
+        sendLine(sender, "  Tick 3: §fw+rls-d");
+        sendLine(sender, "  §7→ D must be released on tick 2 OR tick 3");
         sendLine(sender, "");
 
         sendLine(sender, "§7==== §ePress/Hold Logic §7====");
@@ -185,6 +256,12 @@ public class InputCheckerCommand extends CommandBase {
         sendLine(sender, "§f/inputchecker color1 <color> §7- Title/value color");
         sendLine(sender, "§f/inputchecker color2 <color> §7- Content/text color");
         sendLine(sender, "§f/inputchecker colorlist §7- Show all colors");
+        sendLine(sender, "");
+
+        sendLine(sender, "§7==== §eSharing Elements §7====");
+        sendLine(sender, "§f/inputchecker export <name> §7- Export element to file");
+        sendLine(sender, "§f/inputchecker import <file> §7- Import element from file");
+        sendLine(sender, "§7Files are saved in: §fconfig/");
         sendLine(sender, "");
     }
 

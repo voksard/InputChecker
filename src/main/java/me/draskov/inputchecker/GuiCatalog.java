@@ -11,6 +11,7 @@ import java.io.IOException;
 public class GuiCatalog extends GuiScreen {
 
     private GuiTextField nameField;
+    private GuiButton addButton;
     private static int scrollOffset = 0; // Statique pour persister entre les recréations du GUI
     private static final int VISIBLE_ITEMS = 8;
     private static final int ITEM_HEIGHT = 24;
@@ -30,7 +31,9 @@ public class GuiCatalog extends GuiScreen {
         nameField.setText("");
 
         this.buttonList.clear();
-        this.buttonList.add(new GuiButton(1, cx + 45, 25, 80, 20, "Add"));
+        addButton = new GuiButton(1, cx + 45, 25, 80, 20, "Add");
+        this.buttonList.add(addButton);
+        updateAddButtonState();
 
         int baseY = 60;
         int visibleCount = 0;
@@ -60,10 +63,19 @@ public class GuiCatalog extends GuiScreen {
 
         if (b.id == 1) {
             String n = nameField.getText().trim();
-            if (n.isEmpty()) n = "element";
+
+            // Vérifier si le nom est valide
+            if (!isNameValid(n)) {
+                return; // Ne rien faire si le nom n'est pas valide
+            }
+
             CheckElement el = new CheckElement(n);
             ElementStore.elements.add(el);
             ElementStore.save();
+
+            // Positionner le scroll sur le nouvel élément (dernier de la liste)
+            scrollOffset = Math.max(0, ElementStore.elements.size() - VISIBLE_ITEMS);
+
             this.mc.displayGuiScreen(new GuiCatalog());
             return;
         }
@@ -139,7 +151,10 @@ public class GuiCatalog extends GuiScreen {
 
     @Override
     protected void keyTyped(char typedChar, int keyCode) throws IOException {
-        if (nameField.textboxKeyTyped(typedChar, keyCode)) return;
+        if (nameField.textboxKeyTyped(typedChar, keyCode)) {
+            updateAddButtonState(); // Mettre à jour l'état du bouton après chaque saisie
+            return;
+        }
         // Réinitialiser le scroll quand on appuie sur Échap (keyCode 1)
         if (keyCode == 1) {
             scrollOffset = 0;
@@ -162,7 +177,48 @@ public class GuiCatalog extends GuiScreen {
         this.drawString(this.fontRendererObj, "Name:", cx - 140, 31, 0xCCCCCC);
         nameField.drawTextBox();
 
+        // Afficher les numéros de ligne à gauche de chaque élément
+        int baseY = 60;
+        int visibleCount = 0;
+        for (int i = scrollOffset; i < ElementStore.elements.size() && visibleCount < VISIBLE_ITEMS; i++) {
+            int y = baseY + visibleCount * ITEM_HEIGHT;
+            int lineNumber = i + 1; // Numéro de ligne (1-based)
+            this.drawString(this.fontRendererObj, String.valueOf(lineNumber), cx - 165, y + 6, 0xAAAAAA);
+            visibleCount++;
+        }
 
         super.drawScreen(mouseX, mouseY, partialTicks);
     }
+
+    /**
+     * Vérifie si le nom saisi est valide
+     * @param name Le nom à vérifier
+     * @return true si le nom est valide (non vide et n'existe pas déjà), false sinon
+     */
+    private boolean isNameValid(String name) {
+        // Vérifier si le nom est vide
+        if (name == null || name.trim().isEmpty()) {
+            return false;
+        }
+
+        // Vérifier si un élément avec ce nom existe déjà
+        for (CheckElement el : ElementStore.elements) {
+            if (el.name.equalsIgnoreCase(name.trim())) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Met à jour l'état (enabled/disabled) du bouton Add
+     */
+    private void updateAddButtonState() {
+        if (addButton != null) {
+            String name = nameField.getText().trim();
+            addButton.enabled = isNameValid(name);
+        }
+    }
 }
+

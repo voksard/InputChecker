@@ -24,6 +24,7 @@ public class GuiEditElement extends GuiScreen {
     private List<Boolean> originalNoSneak;
 
     private GuiTextField nameField;
+    private GuiButton saveButton;
     private final List<GuiTextField> tickFields = new ArrayList<>();
     private final List<Boolean> checkSprintBoxes = new ArrayList<>();
     private final List<Boolean> checkJumpBoxes = new ArrayList<>();
@@ -169,6 +170,9 @@ public class GuiEditElement extends GuiScreen {
 
         this.buttonList.add(new GuiButton(ID_SAVE, this.width - 200, 20, 80, 20, "Save"));
         this.buttonList.add(new GuiButton(ID_BACK, this.width - 115, 20, 80, 20, "Back"));
+
+        saveButton = (GuiButton) this.buttonList.get(this.buttonList.size() - 2); // Le bouton Save est l'avant-dernier
+        updateSaveButtonState();
     }
 
     /**
@@ -188,9 +192,15 @@ public class GuiEditElement extends GuiScreen {
     @Override
     protected void actionPerformed(GuiButton b) throws IOException {
         if (b.id == ID_SAVE) {
+            String newName = nameField.getText().trim();
+
+            // Vérifier si le nom est valide
+            if (!isNameValid(newName)) {
+                return; // Ne rien faire si le nom n'est pas valide
+            }
+
             flushFieldsToElement();
-            element.name = nameField.getText().trim();
-            if (element.name.isEmpty()) element.name = "element";
+            element.name = newName;
             ElementStore.save();
             this.mc.displayGuiScreen(new GuiCatalog());
             return;
@@ -359,7 +369,10 @@ public class GuiEditElement extends GuiScreen {
             return;
         }
 
-        if (nameField != null && nameField.textboxKeyTyped(typedChar, keyCode)) return;
+        if (nameField != null && nameField.textboxKeyTyped(typedChar, keyCode)) {
+            updateSaveButtonState(); // Mettre à jour l'état du bouton après chaque saisie
+            return;
+        }
 
         for (int i = 0; i < tickFields.size(); i++) {
             GuiTextField tf = tickFields.get(i);
@@ -493,6 +506,11 @@ public class GuiEditElement extends GuiScreen {
 
         // Gérer la touche 'P' pour auto-compléter "prs-"
         if (keyCode == Keyboard.KEY_P) {
+            // Bloquer si le texte se termine déjà par "prs-" ou "rls-" (incomplet)
+            if (current.endsWith("prs-") || current.endsWith("rls-")) {
+                return; // Ne pas ajouter un nouveau préfixe si le précédent est incomplet
+            }
+
             String toAdd = "prs-";
             if (current.isEmpty()) {
                 tf.setText(toAdd);
@@ -508,6 +526,11 @@ public class GuiEditElement extends GuiScreen {
 
         // Gérer la touche 'R' pour auto-compléter "rls-"
         if (keyCode == Keyboard.KEY_R) {
+            // Bloquer si le texte se termine déjà par "prs-" ou "rls-" (incomplet)
+            if (current.endsWith("prs-") || current.endsWith("rls-")) {
+                return; // Ne pas ajouter un nouveau préfixe si le précédent est incomplet
+            }
+
             String toAdd = "rls-";
             if (current.isEmpty()) {
                 tf.setText(toAdd);
@@ -527,6 +550,11 @@ public class GuiEditElement extends GuiScreen {
             // Vérifier si cette touche existe déjà
             if (inputAlreadyExists(current, key)) {
                 return; // Bloquer le doublon (ex: w+w)
+            }
+
+            // Vérifier les conflits logiques (ex: prs-w+w, rls-w+w, prs-w+rls-w)
+            if (hasLogicalConflict(current, key)) {
+                return; // Bloquer le conflit logique
             }
 
             // Vérifier si on est après "prs-" ou "rls-"
@@ -557,6 +585,11 @@ public class GuiEditElement extends GuiScreen {
                     return; // Bloquer le doublon
                 }
 
+                // Vérifier les conflits logiques (ex: prs-jmp+rls-jmp)
+                if (hasLogicalConflict(current, fullInput)) {
+                    return; // Bloquer le conflit logique
+                }
+
                 tf.setText(current + lenientKey);
                 element.tickInputs.set(tickIdx, tf.getText());
                 sanitizeCheckboxesForTickInput(tickIdx);
@@ -585,6 +618,81 @@ public class GuiEditElement extends GuiScreen {
             }
         }
         return false;
+    }
+
+    /**
+     * Vérifie si l'ajout d'un input créerait un conflit logique
+     * Exemples de conflits :
+     * - prs-w+rls-w (on ne peut pas presser ET relâcher la même touche)
+     * - prs-w+w (redondant, presser implique avoir la touche)
+     * - rls-w+w (contradictoire, relâcher implique ne pas avoir la touche)
+     *
+     * @param current Texte actuel dans la case
+     * @param inputToAdd Input qu'on veut ajouter
+     * @return true s'il y a un conflit, false sinon
+     */
+    private boolean hasLogicalConflict(String current, String inputToAdd) {
+        if (current.isEmpty()) return false;
+
+        // Extraire la clé de l'input à ajouter (w, a, s, d, jmp, spr, snk)
+        String keyToAdd = extractKey(inputToAdd);
+        if (keyToAdd == null) return false;
+
+        // Extraire tous les inputs existants
+        String[] parts = current.split("\\+");
+        for (String part : parts) {
+            part = part.trim();
+            String existingKey = extractKey(part);
+            if (existingKey == null || !existingKey.equals(keyToAdd)) continue;
+
+            // Même clé détectée, vérifier les conflits
+            boolean isAddingPrs = inputToAdd.startsWith("prs-");
+            boolean isAddingRls = inputToAdd.startsWith("rls-");
+            boolean isAddingNormal = !isAddingPrs && !isAddingRls;
+
+            boolean existingIsPrs = part.startsWith("prs-");
+            boolean existingIsRls = part.startsWith("rls-");
+            boolean existingIsNormal = !existingIsPrs && !existingIsRls;
+
+            // Conflits à bloquer :
+            // 1. prs-X + rls-X (presser et relâcher la même touche)
+            if ((isAddingPrs && existingIsRls) || (isAddingRls && existingIsPrs)) {
+                return true;
+            }
+
+            // 2. prs-X + X (redondant, presser implique avoir)
+            if ((isAddingPrs && existingIsNormal) || (isAddingNormal && existingIsPrs)) {
+                return true;
+            }
+
+            // 3. rls-X + X (contradictoire, relâcher implique ne pas avoir)
+            if ((isAddingRls && existingIsNormal) || (isAddingNormal && existingIsRls)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Extrait la clé (w, a, s, d, jmp, spr, snk) d'un input
+     * @param input L'input (ex: "w", "prs-w", "rls-jmp")
+     * @return La clé extraite, ou null si non reconnu
+     */
+    private String extractKey(String input) {
+        if (input == null || input.isEmpty()) return null;
+
+        // Si c'est un input avec préfixe
+        if (input.startsWith("prs-") || input.startsWith("rls-")) {
+            return input.substring(4); // Extraire après "prs-" ou "rls-"
+        }
+
+        // Si c'est un input normal (w, a, s, d, jmp, spr, snk)
+        if (input.matches("^(w|a|s|d|jmp|spr|snk)$")) {
+            return input;
+        }
+
+        return null;
     }
 
     /**
@@ -944,12 +1052,16 @@ public class GuiEditElement extends GuiScreen {
         this.drawString(this.fontRendererObj, "spr: sprint", 10, 75, 0xAAAAAA);
         this.drawString(this.fontRendererObj, "jmp: jump", 10, 85, 0xAAAAAA);
         this.drawString(this.fontRendererObj, "snk: sneak", 10, 95, 0xAAAAAA);
+
         this.drawString(this.fontRendererObj, "Special checks:", 10, 110, 0xAAAAAA);
         this.drawString(this.fontRendererObj, "ns: no sprint", 10, 120, 0xAAAAAA);
         this.drawString(this.fontRendererObj, "nj: no jump", 10, 130, 0xAAAAAA);
         this.drawString(this.fontRendererObj, "nk: no sneak", 10, 140, 0xAAAAAA);
-        this.drawString(this.fontRendererObj, "Type prs-input or rls-input", 10, 155, 0xAAAAAA);
-        this.drawString(this.fontRendererObj, "for pressed/released input", 10, 165, 0xAAAAAA);
+
+        this.drawString(this.fontRendererObj, "Type prs-input", 10, 155, 0xAAAAAA);
+        this.drawString(this.fontRendererObj, "or rls-input for", 10, 165, 0xAAAAAA);
+        this.drawString(this.fontRendererObj, "press/release", 10, 175, 0xAAAAAA);
+        // Ligne vide pour espacement
 
         this.drawString(this.fontRendererObj, "Name:", cx - 140, 26, 0xCCCCCC);
         nameField.drawTextBox();
@@ -1075,6 +1187,38 @@ public class GuiEditElement extends GuiScreen {
     @Override
     public boolean doesGuiPauseGame() {
         return false;
+    }
+
+    /**
+     * Vérifie si le nom saisi est valide
+     * @param name Le nom à vérifier
+     * @return true si le nom est valide (non vide et n'existe pas déjà pour un autre élément), false sinon
+     */
+    private boolean isNameValid(String name) {
+        // Vérifier si le nom est vide
+        if (name == null || name.trim().isEmpty()) {
+            return false;
+        }
+
+        // Vérifier si un autre élément avec ce nom existe déjà
+        // (on autorise le même nom que l'élément actuel)
+        for (CheckElement el : ElementStore.elements) {
+            if (!el.id.equals(element.id) && el.name.equalsIgnoreCase(name.trim())) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Met à jour l'état (enabled/disabled) du bouton Save
+     */
+    private void updateSaveButtonState() {
+        if (saveButton != null && nameField != null) {
+            String name = nameField.getText().trim();
+            saveButton.enabled = isNameValid(name);
+        }
     }
 }
 

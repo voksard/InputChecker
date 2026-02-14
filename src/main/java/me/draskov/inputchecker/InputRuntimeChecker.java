@@ -157,7 +157,7 @@ public class InputRuntimeChecker {
 
             HudLog.clear();
             HudLog.setStatus("§aOk " + active.name + ":");
-            HudLog.push(ColorConfig.getContentColorCode() + "Sequence completed");
+            HudLog.push(ColorConfig.getContentColorCode() + "Correct inputs");
             StatsTracker.recordOk();
 
             resetAll();
@@ -899,9 +899,27 @@ public class InputRuntimeChecker {
     private boolean validateLenientInputs(CheckElement element) {
         if (element == null || element.tickInputs == null) return true;
 
+        boolean hasAnyInput = false; // Pour vérifier si l'élément a au moins un input
+
         for (int i = 0; i < element.tickInputs.size(); i++) {
             String input = element.tickInputs.get(i);
             if (input == null || input.trim().isEmpty()) continue;
+
+            String trimmedInput = input.trim();
+
+            // Vérifier si l'input contient des préfixes incomplets (prs- ou rls- sans touche)
+            if (hasIncompletePrefix(trimmedInput)) {
+                HudLog.clear();
+                HudLog.setStatus("§cInvalid configuration:");
+                HudLog.pushIncompletePrefix(String.valueOf(i + 1)); // Tick en color1
+                HudLog.push(ColorConfig.getContentColorCode() + "Complete prs- or rls- with a key");
+                return false;
+            }
+
+            // Vérifier s'il y a au moins un input réel (pas juste des checkboxes)
+            if (!trimmedInput.isEmpty()) {
+                hasAnyInput = true;
+            }
 
             List<TokenSpec> specs = parseTokens(input);
             for (TokenSpec ts : specs) {
@@ -941,7 +959,39 @@ public class InputRuntimeChecker {
             }
         }
 
+        // Vérifier s'il y a au moins un input dans tout l'élément
+        // (pas seulement des checkboxes ou complètement vide)
+        if (!hasAnyInput) {
+            // Afficher le message d'erreur si aucun input texte n'est présent
+            HudLog.clear();
+            HudLog.setStatus("§cInvalid configuration:");
+            HudLog.pushNoInputsMessage(element.name); // Nom de l'élément en color1
+            HudLog.push(ColorConfig.getContentColorCode() + "Add at least one movement");
+            return false;
+        }
+
         return true;
+    }
+
+    /**
+     * Vérifie si une chaîne d'input contient des préfixes incomplets
+     * @param input L'input à vérifier (ex: "w+prs-", "rls-+a")
+     * @return true si un préfixe incomplet est détecté
+     */
+    private boolean hasIncompletePrefix(String input) {
+        if (input == null || input.isEmpty()) return false;
+
+        // Séparer par '+' et vérifier chaque partie
+        String[] parts = input.split("\\+");
+        for (String part : parts) {
+            part = part.trim();
+            // Vérifier si c'est exactement "prs-" ou "rls-" (sans touche après)
+            if (part.equals("prs-") || part.equals("rls-")) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

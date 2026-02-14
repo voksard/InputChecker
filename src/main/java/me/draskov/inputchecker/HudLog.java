@@ -12,7 +12,7 @@ public class HudLog {
     private enum LineType {
         RUNNING,           // "Running {element}"
         NO_ACTIVE,         // "No active element"
-        SEQUENCE_COMPLETED, // "Sequence completed"
+        SEQUENCE_COMPLETED, // "Correct inputs"
         GENERIC,           // Contenu générique avec color2
         GOT,               // "Got: {keys}"
         EXPECTED,          // "Expected: {expected} tick {num}"
@@ -131,7 +131,7 @@ public class HudLog {
             line = new HudLine(LineType.RUNNING, cleaned.substring(8));
         } else if (cleaned.equals("No active element")) {
             line = new HudLine(LineType.NO_ACTIVE, cleaned);
-        } else if (cleaned.equals("Sequence completed")) {
+        } else if (cleaned.equals("Correct inputs")) {
             line = new HudLine(LineType.SEQUENCE_COMPLETED, cleaned);
         } else if (cleaned.equals("Right click to start")) {
             line = new HudLine(LineType.RIGHT_CLICK_START, cleaned);
@@ -199,6 +199,30 @@ public class HudLog {
     public static void pushValidationText(String text) {
         // Texte simple pour les messages de validation
         HudLine line = new HudLine(LineType.VALIDATION_ERROR, text);
+        hudLines.add(0, line);
+
+        while (hudLines.size() > MAX) {
+            hudLines.remove(hudLines.size() - 1);
+        }
+    }
+
+    public static void pushIncompletePrefix(String tick) {
+        // "Incomplete prefix on tick {tick}" avec tick en color1
+        String message = ColorConfig.getContentColorCode() + "Incomplete prefix on tick " +
+                         ColorConfig.getTitleColorCode() + tick;
+        HudLine line = new HudLine(LineType.GENERIC, message);
+        hudLines.add(0, line);
+
+        while (hudLines.size() > MAX) {
+            hudLines.remove(hudLines.size() - 1);
+        }
+    }
+
+    public static void pushNoInputsMessage(String elementName) {
+        // "{elementName} has no inputs" avec elementName en color1
+        String message = ColorConfig.getTitleColorCode() + elementName +
+                         ColorConfig.getContentColorCode() + " has no inputs";
+        HudLine line = new HudLine(LineType.GENERIC, message);
         hudLines.add(0, line);
 
         while (hudLines.size() > MAX) {

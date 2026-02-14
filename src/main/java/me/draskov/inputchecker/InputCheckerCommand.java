@@ -259,9 +259,16 @@ public class InputCheckerCommand extends CommandBase {
         sendLine(sender, "");
 
         sendLine(sender, "§7==== §eSharing Elements §7====");
-        sendLine(sender, "§f/inputchecker export <name> §7- Export element to file");
-        sendLine(sender, "§f/inputchecker import <file> §7- Import element from file");
-        sendLine(sender, "§7Files are saved in: §fconfig/");
+        sendLine(sender, "§f/inputchecker export <name> §7- Export element to JSON");
+        sendLine(sender, "  §7Example: §f/inputchecker export My Element");
+        sendLine(sender, "  §7Creates: §fconfig/My_Element.json");
+        sendLine(sender, "");
+        sendLine(sender, "§f/inputchecker import <file> §7- Import element from JSON");
+        sendLine(sender, "  §7Example: §f/inputchecker import Element.json");
+        sendLine(sender, "  §7Place file in §fconfig/ §7folder first");
+        sendLine(sender, "  §7Auto-renames if name already exists");
+        sendLine(sender, "");
+        sendLine(sender, "§7Share elements with friends by sending the JSON file!");
         sendLine(sender, "");
     }
 

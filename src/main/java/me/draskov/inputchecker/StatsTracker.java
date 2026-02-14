@@ -97,6 +97,39 @@ public class StatsTracker {
         String contentColor = ColorConfig.getContentColorCode();
         String valueColor = ColorConfig.getTitleColorCode();
 
+        // Gérer le nouveau format "Expected {key} {action} in ticks X-Y"
+        if (mistake.startsWith("Expected ") && (mistake.contains(" pressed in ticks ") || mistake.contains(" released in ticks "))) {
+            // Format: "Expected d pressed in ticks 1-2"
+            String afterExpected = mistake.substring(9); // Enlever "Expected "
+
+            String action = "";
+            int ticksIdx = -1;
+            if (afterExpected.contains(" pressed in ticks ")) {
+                action = "pressed";
+                ticksIdx = afterExpected.indexOf(" pressed in ticks ");
+            } else if (afterExpected.contains(" released in ticks ")) {
+                action = "released";
+                ticksIdx = afterExpected.indexOf(" released in ticks ");
+            }
+
+            String key = afterExpected.substring(0, ticksIdx);
+            String ticksStr = afterExpected.substring(ticksIdx + (" " + action + " in ticks ").length());
+
+            return contentColor + "Expected " + valueColor + key + " " + contentColor + action + " between tick " + valueColor + ticksStr.replace("-", contentColor + " and " + valueColor);
+        }
+
+        // Gérer le format "Lenient input not triggered: [key] in ticks X-Y"
+        if (mistake.startsWith("Lenient input not triggered: [")) {
+            int keyStart = mistake.indexOf('[') + 1;
+            int keyEnd = mistake.indexOf(']');
+            String key = mistake.substring(keyStart, keyEnd);
+
+            int ticksIdx = mistake.indexOf("in ticks ");
+            String ticksStr = mistake.substring(ticksIdx + 9);
+
+            return valueColor + key + contentColor + " expected in ticks " + valueColor + ticksStr;
+        }
+
         // Chercher "expected" et "got" dans la phrase
         int expectedIdx = mistake.indexOf("expected ");
         int gotIdx = mistake.indexOf(" got ");

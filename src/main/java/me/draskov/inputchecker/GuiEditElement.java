@@ -13,6 +13,16 @@ import java.util.List;
 
 public class GuiEditElement extends GuiScreen {
     private final CheckElement element;
+    // Sauvegarde de l'état original pour restaurer si on annule
+    private String originalName;
+    private List<String> originalTickInputs;
+    private List<Boolean> originalCheckSprint;
+    private List<Boolean> originalCheckJump;
+    private List<Boolean> originalCheckSneak;
+    private List<Boolean> originalNoSprint;
+    private List<Boolean> originalNoJump;
+    private List<Boolean> originalNoSneak;
+
     private GuiTextField nameField;
     private final List<GuiTextField> tickFields = new ArrayList<>();
     private final List<Boolean> checkSprintBoxes = new ArrayList<>();
@@ -49,6 +59,17 @@ public class GuiEditElement extends GuiScreen {
 
     public GuiEditElement(CheckElement element) {
         this.element = element;
+
+        // Sauvegarder l'état original pour pouvoir restaurer si on annule
+        this.originalName = element.name;
+        this.originalTickInputs = new ArrayList<>(element.tickInputs);
+        this.originalCheckSprint = new ArrayList<>(element.checkSprint);
+        this.originalCheckJump = new ArrayList<>(element.checkJump);
+        this.originalCheckSneak = new ArrayList<>(element.checkSneak);
+        this.originalNoSprint = new ArrayList<>(element.noSprint);
+        this.originalNoJump = new ArrayList<>(element.noJump);
+        this.originalNoSneak = new ArrayList<>(element.noSneak);
+
         if (element.tickInputs == null || element.tickInputs.isEmpty()) {
             element.tickInputs = new ArrayList<>();
             element.checkSprint = new ArrayList<>();
@@ -99,6 +120,7 @@ public class GuiEditElement extends GuiScreen {
         int cx = this.width / 2;
 
         nameField = new GuiTextField(500, this.fontRendererObj, cx - 110, 20, 220, 20);
+        nameField.setMaxStringLength(20); // Limite à 20 caractères pour éviter le dépassement
         nameField.setText(element.name == null ? "" : element.name);
 
         int baseY = 60;
@@ -127,29 +149,40 @@ public class GuiEditElement extends GuiScreen {
             noJumpBoxes.add(noJmp != null && noJmp);
             noSneakBoxes.add(noSnk != null && noSnk);
 
-            // ...existing code...
+            // Désactiver les checkboxes en conflit
             String input = v != null ? v.toLowerCase() : "";
-            disableSprintBoxes.add(input.contains("lnt-spr"));
-            disableJumpBoxes.add(input.contains("lnt-jmp"));
-            disableSneakBoxes.add(input.contains("lnt-snk"));
-            disableNoSprintBoxes.add(input.contains("lnt-spr"));
-            disableNoJumpBoxes.add(input.contains("lnt-jmp"));
-            disableNoSneakBoxes.add(input.contains("lnt-snk"));
+            // Sprint désactivé si lnt-spr OU si no-sprint est coché
+            disableSprintBoxes.add(input.contains("lnt-spr") || (noSpr != null && noSpr));
+            // Jump désactivé si lnt-jmp OU si no-jump est coché
+            disableJumpBoxes.add(input.contains("lnt-jmp") || (noJmp != null && noJmp));
+            // Sneak désactivé si lnt-snk OU si no-sneak est coché
+            disableSneakBoxes.add(input.contains("lnt-snk") || (noSnk != null && noSnk));
+            // No-sprint désactivé si lnt-spr OU si sprint est coché
+            disableNoSprintBoxes.add(input.contains("lnt-spr") || (checkSpr != null && checkSpr));
+            // No-jump désactivé si lnt-jmp OU si jump est coché
+            disableNoJumpBoxes.add(input.contains("lnt-jmp") || (checkJmp != null && checkJmp));
+            // No-sneak désactivé si lnt-snk OU si sneak est coché
+            disableNoSneakBoxes.add(input.contains("lnt-snk") || (checkSnk != null && checkSnk));
 
-            this.buttonList.add(new GuiButton(ID_INSERT_ABOVE_BASE + tickIdx, cx - 165, y, 25, 16, "+↑"));
-            this.buttonList.add(new GuiButton(ID_INSERT_BELOW_BASE + tickIdx, cx - 135, y, 25, 16, "+↓"));
-            this.buttonList.add(new GuiButton(ID_DUPLICATE_BASE + tickIdx, cx - 105, y, 20, 16, "D"));
-            this.buttonList.add(new GuiButton(ID_DELETE_BASE + tickIdx, cx - 80, y, 20, 16, "X"));
-            this.buttonList.add(new GuiButton(ID_CHECK_SPRINT_BASE + tickIdx, cx + 66, y, 22, 16, checkSprintBoxes.get(row) ? "✓" : " "));
-            this.buttonList.add(new GuiButton(ID_CHECK_JUMP_BASE + tickIdx, cx + 96, y, 22, 16, checkJumpBoxes.get(row) ? "✓" : " "));
-            this.buttonList.add(new GuiButton(ID_CHECK_SNEAK_BASE + tickIdx, cx + 126, y, 22, 16, checkSneakBoxes.get(row) ? "✓" : " "));
-            this.buttonList.add(new GuiButton(ID_NO_SPRINT_BASE + tickIdx, cx + 156, y, 22, 16, noSprintBoxes.get(row) ? "✓" : " "));
-            this.buttonList.add(new GuiButton(ID_NO_JUMP_BASE + tickIdx, cx + 186, y, 22, 16, noJumpBoxes.get(row) ? "✓" : " "));
-            this.buttonList.add(new GuiButton(ID_NO_SNEAK_BASE + tickIdx, cx + 216, y, 22, 16, noSneakBoxes.get(row) ? "✓" : " "));
+            // Les boutons Insert/Duplicate/Delete et les checkboxes sont maintenant dessinés manuellement dans drawScreen
         }
 
         this.buttonList.add(new GuiButton(ID_SAVE, this.width - 200, 20, 80, 20, "Save"));
         this.buttonList.add(new GuiButton(ID_BACK, this.width - 115, 20, 80, 20, "Back"));
+    }
+
+    /**
+     * Restaure l'état original de l'élément (annule les modifications)
+     */
+    private void restoreOriginalState() {
+        element.name = originalName;
+        element.tickInputs = new ArrayList<>(originalTickInputs);
+        element.checkSprint = new ArrayList<>(originalCheckSprint);
+        element.checkJump = new ArrayList<>(originalCheckJump);
+        element.checkSneak = new ArrayList<>(originalCheckSneak);
+        element.noSprint = new ArrayList<>(originalNoSprint);
+        element.noJump = new ArrayList<>(originalNoJump);
+        element.noSneak = new ArrayList<>(originalNoSneak);
     }
 
     @Override
@@ -164,6 +197,8 @@ public class GuiEditElement extends GuiScreen {
         }
 
         if (b.id == ID_BACK) {
+            // Restaurer l'état original (annuler les modifications)
+            restoreOriginalState();
             this.mc.displayGuiScreen(new GuiCatalog());
             return;
         }
@@ -188,7 +223,7 @@ public class GuiEditElement extends GuiScreen {
                     element.noJump.remove(element.noJump.size() - 1);
                     element.noSneak.remove(element.noSneak.size() - 1);
                 }
-                ElementStore.save();
+                // Pas de sauvegarde automatique (legacy button)
                 this.initGui();
             }
             return;
@@ -214,7 +249,7 @@ public class GuiEditElement extends GuiScreen {
                     element.noJump.remove(element.noJump.size() - 1);
                     element.noSneak.remove(element.noSneak.size() - 1);
                 }
-                ElementStore.save();
+                // Pas de sauvegarde automatique (legacy button)
                 this.initGui();
             }
             return;
@@ -242,7 +277,7 @@ public class GuiEditElement extends GuiScreen {
                     element.noSneak.add(false);
                 }
 
-                ElementStore.save();
+                // Pas de sauvegarde automatique (legacy button)
                 this.initGui();
             }
             return;
@@ -262,127 +297,39 @@ public class GuiEditElement extends GuiScreen {
                     element.noJump.set(tickIdx + 1, element.noJump.get(tickIdx));
                     element.noSneak.set(tickIdx + 1, element.noSneak.get(tickIdx));
                 }
-                ElementStore.save();
+                // Pas de sauvegarde automatique (legacy button)
                 this.initGui();
             }
             return;
         }
 
         if (b.id >= ID_CHECK_SPRINT_BASE && b.id < ID_CHECK_JUMP_BASE) {
-            int tickIdx = b.id - ID_CHECK_SPRINT_BASE;
-            if (tickIdx >= 0 && tickIdx < element.checkSprint.size()) {
-                // Vérifier si la case est désactivée
-                String input = element.tickInputs.get(tickIdx).toLowerCase();
-
-                // Empêcher de cocher spr si ns (noSprint) est déjà coché
-                if (element.noSprint.get(tickIdx)) {
-                    return;
-                }
-
-                if (!input.contains("lnt-spr")) {
-                    element.checkSprint.set(tickIdx, !element.checkSprint.get(tickIdx));
-                    ElementStore.save();
-                    this.initGui();
-                }
-            }
+            // Les checkboxes sont maintenant gérées dans mouseClicked, pas dans actionPerformed
             return;
         }
 
         if (b.id >= ID_CHECK_JUMP_BASE && b.id < ID_CHECK_SNEAK_BASE) {
-            int tickIdx = b.id - ID_CHECK_JUMP_BASE;
-            if (tickIdx >= 0 && tickIdx < element.checkJump.size()) {
-                // Vérifier si la case est désactivée
-                String input = element.tickInputs.get(tickIdx).toLowerCase();
-
-                // Empêcher de cocher jmp si nj (no jump) est déjà coché
-                if (element.noJump.get(tickIdx)) {
-                    return;
-                }
-
-                if (!input.contains("lnt-jmp")) {
-                    element.checkJump.set(tickIdx, !element.checkJump.get(tickIdx));
-                    ElementStore.save();
-                    this.initGui();
-                }
-            }
+            // Les checkboxes sont maintenant gérées dans mouseClicked, pas dans actionPerformed
             return;
         }
 
         if (b.id >= ID_CHECK_SNEAK_BASE && b.id < ID_NO_SPRINT_BASE) {
-            int tickIdx = b.id - ID_CHECK_SNEAK_BASE;
-            if (tickIdx >= 0 && tickIdx < element.checkSneak.size()) {
-                // Vérifier si la case est désactivée
-                String input = element.tickInputs.get(tickIdx).toLowerCase();
-
-                // Empêcher de cocher snk si nsnk (no sneak) est déjà coché
-                if (element.noSneak.get(tickIdx)) {
-                    return;
-                }
-
-                if (!input.contains("lnt-snk")) {
-                    element.checkSneak.set(tickIdx, !element.checkSneak.get(tickIdx));
-                    ElementStore.save();
-                    this.initGui();
-                }
-            }
+            // Les checkboxes sont maintenant gérées dans mouseClicked, pas dans actionPerformed
             return;
         }
 
         if (b.id >= ID_NO_SPRINT_BASE && b.id < ID_NO_JUMP_BASE) {
-            int tickIdx = b.id - ID_NO_SPRINT_BASE;
-            if (tickIdx >= 0 && tickIdx < element.noSprint.size()) {
-                String input = element.tickInputs.get(tickIdx).toLowerCase();
-
-                // Empêcher de cocher ns si spr (checkSprint) est déjà coché
-                if (element.checkSprint.get(tickIdx)) {
-                    // Ne rien faire, incompatible
-                    return;
-                }
-
-                if (!input.contains("lnt-spr")) {
-                    element.noSprint.set(tickIdx, !element.noSprint.get(tickIdx));
-                    ElementStore.save();
-                    this.initGui();
-                }
-            }
+            // Les checkboxes sont maintenant gérées dans mouseClicked, pas dans actionPerformed
             return;
         }
 
         if (b.id >= ID_NO_JUMP_BASE && b.id < ID_NO_SNEAK_BASE) {
-            int tickIdx = b.id - ID_NO_JUMP_BASE;
-            if (tickIdx >= 0 && tickIdx < element.noJump.size()) {
-                String input = element.tickInputs.get(tickIdx).toLowerCase();
-
-                // Empêcher de cocher nj si jmp (checkJump) est déjà coché
-                if (element.checkJump.get(tickIdx)) {
-                    return;
-                }
-
-                if (!input.contains("lnt-jmp")) {
-                    element.noJump.set(tickIdx, !element.noJump.get(tickIdx));
-                    ElementStore.save();
-                    this.initGui();
-                }
-            }
+            // Les checkboxes sont maintenant gérées dans mouseClicked, pas dans actionPerformed
             return;
         }
 
         if (b.id >= ID_NO_SNEAK_BASE && b.id < ID_NO_SNEAK_BASE + 1000) {
-            int tickIdx = b.id - ID_NO_SNEAK_BASE;
-            if (tickIdx >= 0 && tickIdx < element.noSneak.size()) {
-                String input = element.tickInputs.get(tickIdx).toLowerCase();
-
-                // Empêcher de cocher nsnk si snk (checkSneak) est déjà coché
-                if (element.checkSneak.get(tickIdx)) {
-                    return;
-                }
-
-                if (!input.contains("lnt-snk")) {
-                    element.noSneak.set(tickIdx, !element.noSneak.get(tickIdx));
-                    ElementStore.save();
-                    this.initGui();
-                }
-            }
+            // Les checkboxes sont maintenant gérées dans mouseClicked, pas dans actionPerformed
             return;
         }
     }
@@ -405,6 +352,13 @@ public class GuiEditElement extends GuiScreen {
 
     @Override
     protected void keyTyped(char typedChar, int keyCode) throws IOException {
+        // Détecter la touche Échap (ESC) pour annuler et restaurer l'état original
+        if (keyCode == Keyboard.KEY_ESCAPE) {
+            restoreOriginalState();
+            super.keyTyped(typedChar, keyCode); // Ferme l'interface
+            return;
+        }
+
         if (nameField != null && nameField.textboxKeyTyped(typedChar, keyCode)) return;
 
         for (int i = 0; i < tickFields.size(); i++) {
@@ -435,7 +389,7 @@ public class GuiEditElement extends GuiScreen {
                 element.tickInputs.set(tickIdx, tf.getText());
                 sanitizeCheckboxesForTickInput(tickIdx);
                 updateCheckboxesInMemory(tickIdx);
-                ElementStore.save();
+                // Pas de sauvegarde automatique
             }
             return;
         }
@@ -443,6 +397,18 @@ public class GuiEditElement extends GuiScreen {
         // Gérer les touches spéciales pour lnt-snk, lnt-jmp, lnt-spr
         // Shift → lnt-snk
         if (keyCode == Keyboard.KEY_LSHIFT || keyCode == Keyboard.KEY_RSHIFT) {
+            // Bloquer si snk ou nk est coché sur cette ligne
+            if (element.checkSneak.get(tickIdx) || element.noSneak.get(tickIdx)) {
+                return; // Ne pas permettre lnt-snk si snk ou nk est coché
+            }
+
+            // Vérifier si lnt-snk existe déjà
+            if (inputAlreadyExists(current, "lnt-snk")) {
+                return; // Bloquer le doublon
+            }
+
+            String toAdd = current.endsWith("lnt-") ? "lnt-snk" : "lnt-snk";
+
             if (current.endsWith("lnt-")) {
                 tf.setText(current + "snk");
             } else if (current.isEmpty()) {
@@ -453,12 +419,22 @@ public class GuiEditElement extends GuiScreen {
             element.tickInputs.set(tickIdx, tf.getText());
             sanitizeCheckboxesForTickInput(tickIdx);
             updateCheckboxesInMemory(tickIdx);
-            ElementStore.save();
+            // Pas de sauvegarde automatique
             return;
         }
 
         // Space → lnt-jmp
         if (keyCode == Keyboard.KEY_SPACE) {
+            // Bloquer si jmp ou nj est coché sur cette ligne
+            if (element.checkJump.get(tickIdx) || element.noJump.get(tickIdx)) {
+                return; // Ne pas permettre lnt-jmp si jmp ou nj est coché
+            }
+
+            // Vérifier si lnt-jmp existe déjà
+            if (inputAlreadyExists(current, "lnt-jmp")) {
+                return; // Bloquer le doublon
+            }
+
             if (current.endsWith("lnt-")) {
                 tf.setText(current + "jmp");
             } else if (current.isEmpty()) {
@@ -469,12 +445,22 @@ public class GuiEditElement extends GuiScreen {
             element.tickInputs.set(tickIdx, tf.getText());
             sanitizeCheckboxesForTickInput(tickIdx);
             updateCheckboxesInMemory(tickIdx);
-            ElementStore.save();
+            // Pas de sauvegarde automatique
             return;
         }
 
         // Ctrl → lnt-spr
         if (keyCode == Keyboard.KEY_LCONTROL || keyCode == Keyboard.KEY_RCONTROL) {
+            // Bloquer si spr ou ns est coché sur cette ligne
+            if (element.checkSprint.get(tickIdx) || element.noSprint.get(tickIdx)) {
+                return; // Ne pas permettre lnt-spr si spr ou ns est coché
+            }
+
+            // Vérifier si lnt-spr existe déjà
+            if (inputAlreadyExists(current, "lnt-spr")) {
+                return; // Bloquer le doublon
+            }
+
             if (current.endsWith("lnt-")) {
                 tf.setText(current + "spr");
             } else if (current.isEmpty()) {
@@ -485,7 +471,7 @@ public class GuiEditElement extends GuiScreen {
             element.tickInputs.set(tickIdx, tf.getText());
             sanitizeCheckboxesForTickInput(tickIdx);
             updateCheckboxesInMemory(tickIdx);
-            ElementStore.save();
+            // Pas de sauvegarde automatique
             return;
         }
 
@@ -500,13 +486,18 @@ public class GuiEditElement extends GuiScreen {
             element.tickInputs.set(tickIdx, tf.getText());
             sanitizeCheckboxesForTickInput(tickIdx);
             updateCheckboxesInMemory(tickIdx);
-            ElementStore.save();
+            // Pas de sauvegarde automatique
             return;
         }
 
         // Gérer W, A, S, D
         String key = getKeyName(keyCode);
         if (key != null) {
+            // Vérifier si cette touche existe déjà
+            if (inputAlreadyExists(current, key)) {
+                return; // Bloquer le doublon (ex: w+w)
+            }
+
             // Vérifier si on est après "lnt-"
             if (current.endsWith("lnt-")) {
                 tf.setText(current + key);
@@ -518,7 +509,7 @@ public class GuiEditElement extends GuiScreen {
             element.tickInputs.set(tickIdx, tf.getText());
             sanitizeCheckboxesForTickInput(tickIdx);
             updateCheckboxesInMemory(tickIdx);
-            ElementStore.save();
+            // Pas de sauvegarde automatique
             return;
         }
 
@@ -526,17 +517,68 @@ public class GuiEditElement extends GuiScreen {
         if (current.endsWith("lnt-")) {
             String lenientKey = getLenientKeyName(keyCode);
             if (lenientKey != null) {
+                String fullInput = "lnt-" + lenientKey;
+
+                // Vérifier si lnt-xxx existe déjà
+                if (inputAlreadyExists(current, fullInput)) {
+                    return; // Bloquer le doublon
+                }
+
                 tf.setText(current + lenientKey);
                 element.tickInputs.set(tickIdx, tf.getText());
                 sanitizeCheckboxesForTickInput(tickIdx);
                 updateCheckboxesInMemory(tickIdx);
-                ElementStore.save();
+                // Pas de sauvegarde automatique
                 return;
             }
         }
 
         // Bloquer toutes les autres touches
         // Ne rien faire = pas d'écriture libre
+    }
+
+    /**
+     * Vérifie si un input spécifique existe déjà dans la chaîne actuelle
+     * Pour éviter les doublons comme "w+w" ou "lnt-jmp+lnt-jmp"
+     */
+    private boolean inputAlreadyExists(String current, String inputToAdd) {
+        if (current.isEmpty()) return false;
+
+        // Séparer par '+' et vérifier chaque partie
+        String[] parts = current.split("\\+");
+        for (String part : parts) {
+            if (part.equals(inputToAdd)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Vérifie si une touche (jmp/spr/snk) est présente sur cette ligne
+     * (soit dans l'input texte, soit via checkbox)
+     */
+    private boolean isKeyPresentOnLine(int tickIdx, String current, String key) {
+        // Vérifier dans l'input texte
+        if (current.contains(key)) {
+            return true;
+        }
+
+        // Vérifier dans les checkboxes
+        switch (key) {
+            case "jmp":
+            case "jump":
+                return element.checkJump.get(tickIdx);
+            case "spr":
+            case "sprint":
+                return element.checkSprint.get(tickIdx);
+            case "snk":
+            case "sneak":
+                return element.checkSneak.get(tickIdx);
+            default:
+                // Pour w/a/s/d, ils doivent être dans l'input texte
+                return false;
+        }
     }
 
     /**
@@ -557,13 +599,26 @@ public class GuiEditElement extends GuiScreen {
         noJumpBoxes.set(row, element.noJump.get(tickIdx));
         noSneakBoxes.set(row, element.noSneak.get(tickIdx));
 
-        // Mettre à jour les états de désactivation
-        disableSprintBoxes.set(row, input.contains("lnt-spr"));
-        disableJumpBoxes.set(row, input.contains("lnt-jmp"));
-        disableSneakBoxes.set(row, input.contains("lnt-snk"));
-        disableNoSprintBoxes.set(row, input.contains("lnt-spr"));
-        disableNoJumpBoxes.set(row, input.contains("lnt-jmp"));
-        disableNoSneakBoxes.set(row, input.contains("lnt-snk"));
+        // Mettre à jour les états de désactivation en tenant compte des checkboxes cochées
+        boolean checkSpr = element.checkSprint.get(tickIdx);
+        boolean checkJmp = element.checkJump.get(tickIdx);
+        boolean checkSnk = element.checkSneak.get(tickIdx);
+        boolean noSpr = element.noSprint.get(tickIdx);
+        boolean noJmp = element.noJump.get(tickIdx);
+        boolean noSnk = element.noSneak.get(tickIdx);
+
+        // Sprint désactivé si lnt-spr OU si no-sprint est coché
+        disableSprintBoxes.set(row, input.contains("lnt-spr") || noSpr);
+        // Jump désactivé si lnt-jmp OU si no-jump est coché
+        disableJumpBoxes.set(row, input.contains("lnt-jmp") || noJmp);
+        // Sneak désactivé si lnt-snk OU si no-sneak est coché
+        disableSneakBoxes.set(row, input.contains("lnt-snk") || noSnk);
+        // No-sprint désactivé si lnt-spr OU si sprint est coché
+        disableNoSprintBoxes.set(row, input.contains("lnt-spr") || checkSpr);
+        // No-jump désactivé si lnt-jmp OU si jump est coché
+        disableNoJumpBoxes.set(row, input.contains("lnt-jmp") || checkJmp);
+        // No-sneak désactivé si lnt-snk OU si sneak est coché
+        disableNoSneakBoxes.set(row, input.contains("lnt-snk") || checkSnk);
     }
 
     /**
@@ -599,9 +654,7 @@ public class GuiEditElement extends GuiScreen {
             case Keyboard.KEY_A: return "a";
             case Keyboard.KEY_S: return "s";
             case Keyboard.KEY_D: return "d";
-            case Keyboard.KEY_J: return "jmp";
-            case Keyboard.KEY_K: return "snk";
-            case Keyboard.KEY_P: return "spr";
+            // J, K, P ne sont plus ici car jmp/snk/spr sont saisis via Space/Shift/Ctrl
             default: return null;
         }
     }
@@ -624,7 +677,223 @@ public class GuiEditElement extends GuiScreen {
             tf.mouseClicked(mouseX, mouseY, mouseButton);
         }
 
+        // Gestion des clics sur les checkboxes et boutons d'action
+        int cx = this.width / 2;
+        int baseY = 60;
+
+        for (int row = 0; row < tickFields.size(); row++) {
+            int tickIdx = scrollOffset + row;
+            int y = baseY + row * ROW_HEIGHT;
+
+            // Vérifier si on clique sur un bouton d'action
+            if (isMouseInRect(mouseX, mouseY, cx - 165, y, 25, 16)) {
+                handleInsertAbove(tickIdx);
+                return;
+            }
+            if (isMouseInRect(mouseX, mouseY, cx - 135, y, 25, 16)) {
+                handleInsertBelow(tickIdx);
+                return;
+            }
+            if (isMouseInRect(mouseX, mouseY, cx - 105, y, 20, 16)) {
+                handleDuplicate(tickIdx);
+                return;
+            }
+            if (isMouseInRect(mouseX, mouseY, cx - 80, y, 20, 16)) {
+                handleDelete(tickIdx);
+                return;
+            }
+
+            // Vérifier si on clique sur une checkbox (16x16)
+            if (isMouseInCheckbox(mouseX, mouseY, cx + 70, y + 2)) {
+                handleCheckboxClick(tickIdx, "sprint");
+                return;
+            }
+            if (isMouseInCheckbox(mouseX, mouseY, cx + 100, y + 2)) {
+                handleCheckboxClick(tickIdx, "jump");
+                return;
+            }
+            if (isMouseInCheckbox(mouseX, mouseY, cx + 130, y + 2)) {
+                handleCheckboxClick(tickIdx, "sneak");
+                return;
+            }
+            if (isMouseInCheckbox(mouseX, mouseY, cx + 160, y + 2)) {
+                handleCheckboxClick(tickIdx, "noSprint");
+                return;
+            }
+            if (isMouseInCheckbox(mouseX, mouseY, cx + 190, y + 2)) {
+                handleCheckboxClick(tickIdx, "noJump");
+                return;
+            }
+            if (isMouseInCheckbox(mouseX, mouseY, cx + 220, y + 2)) {
+                handleCheckboxClick(tickIdx, "noSneak");
+                return;
+            }
+        }
+
         super.mouseClicked(mouseX, mouseY, mouseButton);
+    }
+
+    private boolean isMouseInRect(int mouseX, int mouseY, int x, int y, int width, int height) {
+        return mouseX >= x && mouseX <= x + width && mouseY >= y && mouseY <= y + height;
+    }
+
+    private boolean isMouseInCheckbox(int mouseX, int mouseY, int boxX, int boxY) {
+        int boxWidth = 16;
+        int boxHeight = 16;
+        return mouseX >= boxX && mouseX <= boxX + boxWidth && mouseY >= boxY && mouseY <= boxY + boxHeight;
+    }
+
+    private void handleCheckboxClick(int tickIdx, String type) {
+        String input = element.tickInputs.get(tickIdx).toLowerCase();
+
+        switch (type) {
+            case "sprint":
+                if (element.noSprint.get(tickIdx)) return;
+                if (!input.contains("lnt-spr")) {
+                    element.checkSprint.set(tickIdx, !element.checkSprint.get(tickIdx));
+                    this.initGui();
+                }
+                break;
+            case "jump":
+                if (element.noJump.get(tickIdx)) return;
+                if (!input.contains("lnt-jmp")) {
+                    element.checkJump.set(tickIdx, !element.checkJump.get(tickIdx));
+                    this.initGui();
+                }
+                break;
+            case "sneak":
+                if (element.noSneak.get(tickIdx)) return;
+                if (!input.contains("lnt-snk")) {
+                    element.checkSneak.set(tickIdx, !element.checkSneak.get(tickIdx));
+                    this.initGui();
+                }
+                break;
+            case "noSprint":
+                if (element.checkSprint.get(tickIdx)) return;
+                if (!input.contains("lnt-spr")) {
+                    element.noSprint.set(tickIdx, !element.noSprint.get(tickIdx));
+                    this.initGui();
+                }
+                break;
+            case "noJump":
+                if (element.checkJump.get(tickIdx)) return;
+                if (!input.contains("lnt-jmp")) {
+                    element.noJump.set(tickIdx, !element.noJump.get(tickIdx));
+                    this.initGui();
+                }
+                break;
+            case "noSneak":
+                if (element.checkSneak.get(tickIdx)) return;
+                if (!input.contains("lnt-snk")) {
+                    element.noSneak.set(tickIdx, !element.noSneak.get(tickIdx));
+                    this.initGui();
+                }
+                break;
+        }
+    }
+
+    private void handleInsertAbove(int tickIdx) {
+        if (tickIdx >= 0 && tickIdx < element.tickInputs.size()) {
+            flushFieldsToElement();
+            element.tickInputs.add(tickIdx, "");
+            element.checkSprint.add(tickIdx, false);
+            element.checkJump.add(tickIdx, false);
+            element.checkSneak.add(tickIdx, false);
+            element.noSprint.add(tickIdx, false);
+            element.noJump.add(tickIdx, false);
+            element.noSneak.add(tickIdx, false);
+            if (element.tickInputs.size() > MAX_TICKS) {
+                element.tickInputs.remove(element.tickInputs.size() - 1);
+                element.checkSprint.remove(element.checkSprint.size() - 1);
+                element.checkJump.remove(element.checkJump.size() - 1);
+                element.checkSneak.remove(element.checkSneak.size() - 1);
+                element.noSprint.remove(element.noSprint.size() - 1);
+                element.noJump.remove(element.noJump.size() - 1);
+                element.noSneak.remove(element.noSneak.size() - 1);
+            }
+            // Pas de sauvegarde automatique - l'utilisateur clique sur "Save" quand il veut
+            this.initGui();
+        }
+    }
+
+    private void handleInsertBelow(int tickIdx) {
+        if (tickIdx >= 0 && tickIdx < element.tickInputs.size()) {
+            flushFieldsToElement();
+            element.tickInputs.add(tickIdx + 1, "");
+            element.checkSprint.add(tickIdx + 1, false);
+            element.checkJump.add(tickIdx + 1, false);
+            element.checkSneak.add(tickIdx + 1, false);
+            element.noSprint.add(tickIdx + 1, false);
+            element.noJump.add(tickIdx + 1, false);
+            element.noSneak.add(tickIdx + 1, false);
+            if (element.tickInputs.size() > MAX_TICKS) {
+                element.tickInputs.remove(element.tickInputs.size() - 1);
+                element.checkSprint.remove(element.checkSprint.size() - 1);
+                element.checkJump.remove(element.checkJump.size() - 1);
+                element.checkSneak.remove(element.checkSneak.size() - 1);
+                element.noSprint.remove(element.noSprint.size() - 1);
+                element.noJump.remove(element.noJump.size() - 1);
+                element.noSneak.remove(element.noSneak.size() - 1);
+            }
+            // Pas de sauvegarde automatique
+            this.initGui();
+        }
+    }
+
+    private void handleDelete(int tickIdx) {
+        if (tickIdx >= 0 && tickIdx < element.tickInputs.size()) {
+            flushFieldsToElement();
+            element.tickInputs.remove(tickIdx);
+            element.checkSprint.remove(tickIdx);
+            element.checkJump.remove(tickIdx);
+            element.checkSneak.remove(tickIdx);
+            element.noSprint.remove(tickIdx);
+            element.noJump.remove(tickIdx);
+            element.noSneak.remove(tickIdx);
+
+            if (element.tickInputs.size() < MAX_TICKS) {
+                element.tickInputs.add("");
+                element.checkSprint.add(false);
+                element.checkJump.add(false);
+                element.checkSneak.add(false);
+                element.noSprint.add(false);
+                element.noJump.add(false);
+                element.noSneak.add(false);
+            }
+
+            // Pas de sauvegarde automatique
+            this.initGui();
+        }
+    }
+
+    private void handleDuplicate(int tickIdx) {
+        if (tickIdx >= 0 && tickIdx < element.tickInputs.size()) {
+            flushFieldsToElement();
+            String content = element.tickInputs.get(tickIdx);
+
+            // Insérer une nouvelle ligne à la position tickIdx + 1 (au lieu d'écraser)
+            element.tickInputs.add(tickIdx + 1, content);
+            element.checkSprint.add(tickIdx + 1, element.checkSprint.get(tickIdx));
+            element.checkJump.add(tickIdx + 1, element.checkJump.get(tickIdx));
+            element.checkSneak.add(tickIdx + 1, element.checkSneak.get(tickIdx));
+            element.noSprint.add(tickIdx + 1, element.noSprint.get(tickIdx));
+            element.noJump.add(tickIdx + 1, element.noJump.get(tickIdx));
+            element.noSneak.add(tickIdx + 1, element.noSneak.get(tickIdx));
+
+            // Si on dépasse MAX_TICKS, supprimer la dernière ligne
+            if (element.tickInputs.size() > MAX_TICKS) {
+                element.tickInputs.remove(element.tickInputs.size() - 1);
+                element.checkSprint.remove(element.checkSprint.size() - 1);
+                element.checkJump.remove(element.checkJump.size() - 1);
+                element.checkSneak.remove(element.checkSneak.size() - 1);
+                element.noSprint.remove(element.noSprint.size() - 1);
+                element.noJump.remove(element.noJump.size() - 1);
+                element.noSneak.remove(element.noSneak.size() - 1);
+            }
+
+            // Pas de sauvegarde automatique
+            this.initGui();
+        }
     }
 
     @Override
@@ -669,49 +938,93 @@ public class GuiEditElement extends GuiScreen {
             this.drawString(this.fontRendererObj, String.valueOf(tickIdx + 1), labelX, y + 4, 0xAAAAAA);
             tickFields.get(row).drawTextBox();
 
+            // Dessiner les boutons d'action avec bordures
+            drawActionButton(cx - 165, y, 25, 16, "+↑"); // Insert Above
+            drawActionButton(cx - 135, y, 25, 16, "+↓"); // Insert Below
+            drawActionButton(cx - 105, y, 20, 16, "D");  // Duplicate
+            drawActionButton(cx - 80, y, 20, 16, "X");   // Delete
+
             // Afficher les checkboxes avec couleur grise si désactivées
-            int sprColor = disableSprintBoxes.get(row) ? 0x888888 : 0x00FF00;
-            int jmpColor = disableJumpBoxes.get(row) ? 0x888888 : 0x00FF00;
-            int snkColor = disableSneakBoxes.get(row) ? 0x888888 : 0x00FF00;
+            int sprColor = disableSprintBoxes.get(row) ? 0x888888 : 0xFFFFFF;
+            int jmpColor = disableJumpBoxes.get(row) ? 0x888888 : 0xFFFFFF;
+            int snkColor = disableSneakBoxes.get(row) ? 0x888888 : 0xFFFFFF;
+            int nsColor = disableNoSprintBoxes.get(row) ? 0x888888 : 0xFFFFFF;
+            int njColor = disableNoJumpBoxes.get(row) ? 0x888888 : 0xFFFFFF;
+            int nkColor = disableNoSneakBoxes.get(row) ? 0x888888 : 0xFFFFFF;
 
-            if (checkSprintBoxes.get(row)) {
-                this.drawString(this.fontRendererObj, "✓", cx + 76, y + 4, sprColor);
-            } else if (disableSprintBoxes.get(row)) {
-                this.drawString(this.fontRendererObj, "✗", cx + 76, y + 4, 0x888888);
-            }
+            // Sprint - avec bordure
+            drawCheckboxWithBorder(cx + 70, y + 2, checkSprintBoxes.get(row), disableSprintBoxes.get(row), sprColor);
 
-            if (checkJumpBoxes.get(row)) {
-                this.drawString(this.fontRendererObj, "✓", cx + 106, y + 4, jmpColor);
-            } else if (disableJumpBoxes.get(row)) {
-                this.drawString(this.fontRendererObj, "✗", cx + 106, y + 4, 0x888888);
-            }
+            // Jump - avec bordure
+            drawCheckboxWithBorder(cx + 100, y + 2, checkJumpBoxes.get(row), disableJumpBoxes.get(row), jmpColor);
 
-            if (checkSneakBoxes.get(row)) {
-                this.drawString(this.fontRendererObj, "✓", cx + 136, y + 4, snkColor);
-            } else if (disableSneakBoxes.get(row)) {
-                this.drawString(this.fontRendererObj, "✗", cx + 136, y + 4, 0x888888);
-            }
+            // Sneak - avec bordure
+            drawCheckboxWithBorder(cx + 130, y + 2, checkSneakBoxes.get(row), disableSneakBoxes.get(row), snkColor);
 
-            if (noSprintBoxes.get(row)) {
-                this.drawString(this.fontRendererObj, "✓", cx + 162, y + 4, 0xFF6666);
-            } else if (disableNoSprintBoxes.get(row)) {
-                this.drawString(this.fontRendererObj, "✗", cx + 162, y + 4, 0x888888);
-            }
+            // No Sprint - avec bordure (blanc au lieu de rouge)
+            drawCheckboxWithBorder(cx + 160, y + 2, noSprintBoxes.get(row), disableNoSprintBoxes.get(row), nsColor);
 
-            if (noJumpBoxes.get(row)) {
-                this.drawString(this.fontRendererObj, "✓", cx + 192, y + 4, 0xFF6666);
-            } else if (disableNoJumpBoxes.get(row)) {
-                this.drawString(this.fontRendererObj, "✗", cx + 192, y + 4, 0x888888);
-            }
+            // No Jump - avec bordure (blanc au lieu de rouge)
+            drawCheckboxWithBorder(cx + 190, y + 2, noJumpBoxes.get(row), disableNoJumpBoxes.get(row), njColor);
 
-            if (noSneakBoxes.get(row)) {
-                this.drawString(this.fontRendererObj, "✓", cx + 222, y + 4, 0xFF6666);
-            } else if (disableNoSneakBoxes.get(row)) {
-                this.drawString(this.fontRendererObj, "✗", cx + 222, y + 4, 0x888888);
-            }
+            // No Sneak - avec bordure (blanc au lieu de rouge)
+            drawCheckboxWithBorder(cx + 220, y + 2, noSneakBoxes.get(row), disableNoSneakBoxes.get(row), nkColor);
         }
 
         super.drawScreen(mouseX, mouseY, partialTicks);
+    }
+
+    /**
+     * Dessine une checkbox avec bordure noire complète sur les 4 côtés
+     */
+    private void drawCheckboxWithBorder(int x, int y, boolean checked, boolean disabled, int checkColor) {
+        int width = 16;
+        int height = 16;
+
+        // Fond gris foncé pour mieux voir les symboles
+        // Si désactivée, fond beaucoup plus gris/plus sombre
+        int bgColor = disabled ? 0xFF303030 : 0xFF505050;
+        drawRect(x, y, x + width, y + height, bgColor);
+
+        // Bordure noire complète - 4 côtés
+        // Bord haut
+        drawRect(x, y, x + width, y + 1, 0xFF000000);
+        // Bord bas
+        drawRect(x, y + height - 1, x + width, y + height, 0xFF000000);
+        // Bord gauche
+        drawRect(x, y, x + 1, y + height, 0xFF000000);
+        // Bord droit
+        drawRect(x + width - 1, y, x + width, y + height, 0xFF000000);
+
+        // Afficher le symbole au centre
+        if (checked) {
+            this.drawString(this.fontRendererObj, "✓", x + 5, y + 4, checkColor);
+        }
+        // Ne plus afficher de croix pour les cases désactivées
+    }
+
+    /**
+     * Dessine un bouton d'action (Insert/Duplicate/Delete) avec bordure noire complète
+     */
+    private void drawActionButton(int x, int y, int width, int height, String label) {
+        // Fond gris foncé
+        drawRect(x, y, x + width, y + height, 0xFF505050);
+
+        // Bordure noire complète - 4 côtés
+        // Bord haut
+        drawRect(x, y, x + width, y + 1, 0xFF000000);
+        // Bord bas
+        drawRect(x, y + height - 1, x + width, y + height, 0xFF000000);
+        // Bord gauche
+        drawRect(x, y, x + 1, y + height, 0xFF000000);
+        // Bord droit
+        drawRect(x + width - 1, y, x + width, y + height, 0xFF000000);
+
+        // Centrer le texte
+        int textWidth = this.fontRendererObj.getStringWidth(label);
+        int textX = x + (width - textWidth) / 2;
+        int textY = y + (height - 8) / 2;
+        this.drawString(this.fontRendererObj, label, textX, textY, 0xFFFFFF);
     }
 
     @Override

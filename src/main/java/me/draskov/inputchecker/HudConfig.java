@@ -40,8 +40,36 @@ public class HudConfig {
 
         try (Reader r = new FileReader(f)) {
             HudConfig loaded = GSON.fromJson(r, HudConfig.class);
-            if (loaded != null) INSTANCE = loaded;
+            if (loaded != null) {
+                INSTANCE = loaded;
+                // Valider et corriger les positions si elles sont hors limites
+                validatePositions();
+            }
         } catch (Exception ignored) {
+        }
+    }
+
+    /**
+     * Valide et corrige les positions pour s'assurer qu'elles restent dans des limites raisonnables
+     * Cela empêche les panneaux d'être perdus hors écran si la résolution change
+     */
+    private static void validatePositions() {
+        Minecraft mc = Minecraft.getMinecraft();
+        int screenWidth = mc.displayWidth / 2; // ScaledResolution divise par 2
+        int screenHeight = mc.displayHeight / 2;
+
+        // Si les positions sont complètement hors écran, les réinitialiser
+        if (INSTANCE.x < -500 || INSTANCE.x > screenWidth + 500) {
+            INSTANCE.x = 6;
+        }
+        if (INSTANCE.y < -500 || INSTANCE.y > screenHeight + 500) {
+            INSTANCE.y = 6;
+        }
+        if (INSTANCE.statsX < -500 || INSTANCE.statsX > screenWidth + 500) {
+            INSTANCE.statsX = 6;
+        }
+        if (INSTANCE.statsY < -500 || INSTANCE.statsY > screenHeight + 500) {
+            INSTANCE.statsY = 90;
         }
     }
 

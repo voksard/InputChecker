@@ -51,7 +51,7 @@ public class GuiEditHud extends GuiScreen {
         if (cfg.statsVisible) {
             CheckElement active = ElementStore.getActive();
             String name = active == null ? "Inputchecker" : active.name;
-            String title = "§b" + name + "§7 statistics:";
+            String title = active == null ? "§bInputchecker statistics:" : "§bStatistics " + name + ":";
 
             boolean hover = isMouseInsidePanel(mouseX, mouseY, statsLeft, statsTop, statsRight, statsBottom);
             drawPanel(mc, cfg.statsX, cfg.statsY, title, new java.util.ArrayList<>(), hover, colors.titleColor, false);
@@ -178,12 +178,42 @@ public class GuiEditHud extends GuiScreen {
     protected void mouseClickMove(int mouseX, int mouseY, int button, long time) {
         if (draggingMain) {
             HudConfig cfg = HudConfig.get();
-            cfg.x = mouseX - dragOffsetX;
-            cfg.y = mouseY - dragOffsetY;
+            int newX = mouseX - dragOffsetX;
+            int newY = mouseY - dragOffsetY;
+
+            // Calculer la largeur et hauteur approximative du panneau
+            int panelWidth = mainRight - mainLeft;
+            int panelHeight = mainBottom - mainTop;
+
+            // Limiter la position pour que le panneau reste visible
+            // Minimum: au moins 20 pixels visibles du côté gauche/haut
+            // Maximum: au moins 20 pixels visibles du côté droit/bas
+            newX = Math.max(-panelWidth + 20, newX);
+            newX = Math.min(this.width - 20, newX);
+            newY = Math.max(-panelHeight + 20, newY);
+            newY = Math.min(this.height - 20, newY);
+
+            cfg.x = newX;
+            cfg.y = newY;
         } else if (draggingStats) {
             HudConfig cfg = HudConfig.get();
-            cfg.statsX = mouseX - dragOffsetX;
-            cfg.statsY = mouseY - dragOffsetY;
+            int newX = mouseX - dragOffsetX;
+            int newY = mouseY - dragOffsetY;
+
+            // Calculer la largeur et hauteur approximative du panneau
+            int panelWidth = statsRight - statsLeft;
+            int panelHeight = statsBottom - statsTop;
+
+            // Limiter la position pour que le panneau reste visible
+            // Minimum: au moins 20 pixels visibles du côté gauche/haut
+            // Maximum: au moins 20 pixels visibles du côté droit/bas
+            newX = Math.max(-panelWidth + 20, newX);
+            newX = Math.min(this.width - 20, newX);
+            newY = Math.max(-panelHeight + 20, newY);
+            newY = Math.min(this.height - 20, newY);
+
+            cfg.statsX = newX;
+            cfg.statsY = newY;
         }
     }
 

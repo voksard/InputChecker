@@ -17,7 +17,10 @@ public class HudLog {
         GOT,               // "Got: {keys}"
         EXPECTED,          // "Expected: {expected} tick {num}"
         RIGHT_CLICK_START, // "Right click to start"
-        WARNING            // Messages d'avertissement (couleur dorée)
+        WARNING,           // Messages d'avertissement (couleur dorée)
+        LENIENT_FAILED,    // "Lenient input not triggered: {key} in ticks {start}-{end}"
+        LENIENT_FAILED_NEW, // "Expected {key} {action}" ou "between tick {start} and {end}" avec parties en color1
+        VALIDATION_ERROR   // Messages d'erreur de validation avec parties: [tick, key] pour "Tick {tick}: lnt-{key} must span" ou texte simple
     }
 
     private static class HudLine {
@@ -58,6 +61,46 @@ public class HudLog {
                     // "Expected: " + expected + " tick " + tickNum
                     return ColorConfig.getContentColorCode() + "Expected: " + ColorConfig.getTitleColorCode() + parts[0] +
                            " " + ColorConfig.getContentColorCode() + "tick " + ColorConfig.getTitleColorCode() + parts[1];
+
+                case LENIENT_FAILED:
+                    // "{key} expected in ticks {start}-{end}" avec key, start, end en color1
+                    return ColorConfig.getTitleColorCode() + parts[0] + " " +
+                           ColorConfig.getContentColorCode() + "expected in ticks " +
+                           ColorConfig.getTitleColorCode() + parts[1] + "-" + parts[2];
+
+                case LENIENT_FAILED_NEW:
+                    // Format: "Expected {key} {action}" ou "between tick {start} and {end}"
+                    // parts[0] = key, parts[1] = action, parts[2] = start, parts[3] = end
+                    if (parts.length == 1) {
+                        // Ligne "between tick X and Y"
+                        return ColorConfig.getContentColorCode() + content;
+                    } else if (parts.length == 4) {
+                        // Ligne "Expected {key} {action}"
+                        return ColorConfig.getContentColorCode() + "Expected " +
+                               ColorConfig.getTitleColorCode() + parts[0] + " " +
+                               ColorConfig.getContentColorCode() + parts[1];
+                    } else if (parts.length == 2) {
+                        // Ligne "between tick X and Y" avec X et Y en color1
+                        return ColorConfig.getContentColorCode() + "between tick " +
+                               ColorConfig.getTitleColorCode() + parts[0] +
+                               ColorConfig.getContentColorCode() + " and " +
+                               ColorConfig.getTitleColorCode() + parts[1];
+                    } else {
+                        return ColorConfig.getContentColorCode() + content;
+                    }
+
+                case VALIDATION_ERROR:
+                    // Si parts existe: "Tick {tick}: lnt-{key} must span" avec tick et key en color1
+                    // Sinon: texte simple en color2
+                    if (parts != null && parts.length == 2) {
+                        return ColorConfig.getContentColorCode() + "Tick " +
+                               ColorConfig.getTitleColorCode() + parts[0] +
+                               ColorConfig.getContentColorCode() + ": " +
+                               ColorConfig.getTitleColorCode() + "lnt-" + parts[1] +
+                               ColorConfig.getContentColorCode() + " must span";
+                    } else {
+                        return ColorConfig.getContentColorCode() + content;
+                    }
 
                 default:
                     return ColorConfig.getContentColorCode() + content;
@@ -112,6 +155,50 @@ public class HudLog {
         }
 
         hudLines.add(0, line);
+        while (hudLines.size() > MAX) {
+            hudLines.remove(hudLines.size() - 1);
+        }
+    }
+
+    public static void pushLenientFailed(String key, int startTick, int endTick) {
+        // "{key} expected in ticks {start}-{end}" avec couleurs appropriées
+        HudLine contentLine = new HudLine(LineType.LENIENT_FAILED, new String[]{key, String.valueOf(startTick), String.valueOf(endTick)});
+        hudLines.add(0, contentLine);
+
+        while (hudLines.size() > MAX) {
+            hudLines.remove(hudLines.size() - 1);
+        }
+    }
+
+    public static void pushLenientFailedNew(String key, String action, int startTick, int endTick) {
+        // Nouveau format: "Expected {key} {action}" avec saut de ligne "between tick {start} and {end}"
+        // Inverser l'ordre car add(0) ajoute au début
+        HudLine tickLine = new HudLine(LineType.LENIENT_FAILED_NEW, new String[]{String.valueOf(startTick), String.valueOf(endTick)});
+        hudLines.add(0, tickLine);
+
+        HudLine expectedLine = new HudLine(LineType.LENIENT_FAILED_NEW, new String[]{key, action, String.valueOf(startTick), String.valueOf(endTick)});
+        hudLines.add(0, expectedLine);
+
+        while (hudLines.size() > MAX) {
+            hudLines.remove(hudLines.size() - 1);
+        }
+    }
+
+    public static void pushValidationError(String tick, String key) {
+        // "Tick {tick}: lnt-{key} must span" avec tick et key en color1
+        HudLine line = new HudLine(LineType.VALIDATION_ERROR, new String[]{tick, key});
+        hudLines.add(0, line);
+
+        while (hudLines.size() > MAX) {
+            hudLines.remove(hudLines.size() - 1);
+        }
+    }
+
+    public static void pushValidationText(String text) {
+        // Texte simple pour les messages de validation
+        HudLine line = new HudLine(LineType.VALIDATION_ERROR, text);
+        hudLines.add(0, line);
+
         while (hudLines.size() > MAX) {
             hudLines.remove(hudLines.size() - 1);
         }

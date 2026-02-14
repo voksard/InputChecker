@@ -20,6 +20,21 @@ public class InputRuntimeChecker {
         int startTick;
         int lastTick;
         boolean satisfied;
+        Action expectedAction; // PRESS ou HOLD
+    }
+
+    private static class LenientFailure {
+        String key;
+        Action expectedAction;
+        int startTick;
+        int lastTick;
+
+        LenientFailure(String key, Action expectedAction, int startTick, int lastTick) {
+            this.key = key;
+            this.expectedAction = expectedAction;
+            this.startTick = startTick;
+            this.lastTick = lastTick;
+        }
     }
 
     private static class TokenSpec {
@@ -82,6 +97,12 @@ public class InputRuntimeChecker {
             lastActiveElementId = active.id;
         }
 
+        // Valider les lenient inputs avant de commencer
+        if (!validateLenientInputs(active)) {
+            resetAll();
+            return;
+        }
+
         armed = true;
         started = false;
         tickIndex = 0;
@@ -124,10 +145,12 @@ public class InputRuntimeChecker {
 
         // Si on a dépassé le dernier tick rempli, la séquence est complète
         if (tickIndex > lastNonEmptyTick) {
-            String lenientFail = closeAllLenientWindowsIfNeeded();
+            LenientFailure lenientFail = closeAllLenientWindowsIfNeeded();
             if (lenientFail != null) {
-                StatsTracker.recordFail(lenientFail);
-                failStop(active.name, lenientFail);
+                String actionStr = lenientFail.expectedAction == Action.PRESS ? "pressed" : "released";
+                String reason = "Expected " + lenientFail.key + " " + actionStr + " in ticks " + (lenientFail.startTick + 1) + "-" + (lenientFail.lastTick + 1);
+                StatsTracker.recordFail(reason);
+                failStopLenient(active.name, lenientFail);
                 return;
             }
 
@@ -142,49 +165,78 @@ public class InputRuntimeChecker {
 
         String expectedRaw = active.tickInputs.get(tickIndex);
 
-        // Si la case est vide, appliquer la logique WAIT automatique
+        // Si la case est vide, vérifier les checkboxes (spr, jmp, snk)
         if (expectedRaw == null || expectedRaw.trim().isEmpty()) {
-            // Créer une expectation WAIT pour vérifier qu'aucune touche n'est pressée
-            List<TokenSpec> specs = new ArrayList<>();
-            List<Expectation> exps = new ArrayList<>();
+            // Vérifier si des checkboxes sont cochées
+            boolean checkSpr = tickIndex < active.checkSprint.size() && active.checkSprint.get(tickIndex);
+            boolean checkJmp = tickIndex < active.checkJump.size() && active.checkJump.get(tickIndex);
+            boolean checkSnk = tickIndex < active.checkSneak.size() && active.checkSneak.get(tickIndex);
 
-            Expectation waitExp = new Expectation();
-            waitExp.mode = Mode.REQUIRED;
-            waitExp.action = Action.WAIT;
-            waitExp.key = "";
-            waitExp.id = "wait";
-            exps.add(waitExp);
+            // Si aucune checkbox n'est cochée, c'est un vrai WAIT
+            if (!checkSpr && !checkJmp && !checkSnk) {
+                // Créer une expectation WAIT pour vérifier qu'aucune touche n'est pressée
+                List<TokenSpec> specs = new ArrayList<>();
+                List<Expectation> exps = new ArrayList<>();
 
-            // Vérifier que aucune touche n'est pressée (action WAIT)
-            if (!isSatisfiedThisTick(mc, waitExp, specs)) {
-                // Une touche est pressée alors qu'on était en WAIT
-                Set<String> actualDown = buildActualDown(mc);
+                Expectation waitExp = new Expectation();
+                waitExp.mode = Mode.REQUIRED;
+                waitExp.action = Action.WAIT;
+                waitExp.key = "";
+                waitExp.id = "wait";
+                exps.add(waitExp);
 
-                int failTick1 = tickIndex + 1;
-                HudLog.clear();
-                HudLog.setStatus("§cFail " + active.name + ":");
-                HudLog.push(ColorConfig.getContentColorCode() + "Got: " + ColorConfig.getTitleColorCode() + join(actualDown));
-                HudLog.push(ColorConfig.getContentColorCode() + "Expected: " + ColorConfig.getTitleColorCode() + "nothing " + ColorConfig.getContentColorCode() + "tick " + ColorConfig.getTitleColorCode() + failTick1);
+                // Vérifier que aucune touche n'est pressée (action WAIT)
+                if (!isSatisfiedThisTick(mc, waitExp, specs)) {
+                    // Une touche est pressée alors qu'on était en WAIT
+                    Set<String> actualDown = buildActualDown(mc);
 
-                StatsTracker.recordFail("Tick " + failTick1 + " expected nothing got " + join(actualDown));
+                    int failTick1 = tickIndex + 1;
+                    HudLog.clear();
+                    HudLog.setStatus("§cFail " + active.name + ":");
+                    HudLog.push(ColorConfig.getContentColorCode() + "Got: " + ColorConfig.getTitleColorCode() + join(actualDown));
+                    HudLog.push(ColorConfig.getContentColorCode() + "Expected: " + ColorConfig.getTitleColorCode() + "nothing " + ColorConfig.getContentColorCode() + "tick " + ColorConfig.getTitleColorCode() + failTick1);
 
-                resetAll();
+                    StatsTracker.recordFail("Tick " + failTick1 + " expected nothing got " + join(actualDown));
+
+                    resetAll();
+                    updatePrevDown(mc);
+                    return;
+                }
+
+                tickIndex++;
                 updatePrevDown(mc);
                 return;
             }
 
-            tickIndex++;
-            updatePrevDown(mc);
-            return;
+            // Si des checkboxes sont cochées, traiter le tick comme s'il contenait ces touches
+            // Créer une chaîne avec les checkboxes cochées et la traiter normalement
+            List<String> checkboxes = new ArrayList<>();
+            if (checkSpr) checkboxes.add("spr");
+            if (checkJmp) checkboxes.add("jmp");
+            if (checkSnk) checkboxes.add("snk");
+
+            String checkboxString = String.join("+", checkboxes);
+            expectedRaw = checkboxString;
+            // Continuer avec le traitement normal ci-dessous
         }
 
         List<TokenSpec> specs = parseTokens(expectedRaw);
         List<Expectation> exps = buildExpectations(specs);
 
         if (!started) {
-            if (exps.isEmpty() || containsWait(exps)) {
+            if (containsWait(exps)) {
+                // WAIT démarre immédiatement
                 started = true;
+            } else if (exps.isEmpty()) {
+                // Seulement lenient inputs → attendre une activité pertinente
+                if (hasAnyRelevantActivityThisTick(mc, specs)) {
+                    started = true;
+                } else {
+                    updatePrevDown(mc);
+                    return;
+                }
             } else if (hasAnyRelevantActivityThisTick(mc, specs)) {
+                // Inputs normaux → attendre une activité pertinente
                 started = true;
             } else {
                 updatePrevDown(mc);
@@ -192,10 +244,12 @@ public class InputRuntimeChecker {
             }
         }
 
-        String winFail = resolveLenientWindowsEndingThisTick(specs);
-        if (winFail != null) {
-            StatsTracker.recordFail(winFail);
-            failStop(active.name, winFail);
+        LenientFailure lenientFail = resolveLenientWindowsEndingThisTick(specs);
+        if (lenientFail != null) {
+            String actionStr = lenientFail.expectedAction == Action.PRESS ? "pressed" : "released";
+            String reason = "Expected " + lenientFail.key + " " + actionStr + " in ticks " + (lenientFail.startTick + 1) + "-" + (lenientFail.lastTick + 1);
+            StatsTracker.recordFail(reason);
+            failStopLenient(active.name, lenientFail);
             return;
         }
 
@@ -423,35 +477,33 @@ public class InputRuntimeChecker {
             boolean checkSnk = tickIndex < active.checkSneak.size() && active.checkSneak.get(tickIndex);
 
             // Ajouter spr si coché et pas déjà dans les specs
+            // Les checkboxes vérifient que la touche est DOWN (peu importe si c'est une nouvelle pression ou déjà maintenue)
             if (checkSpr && !tokenMentionsKey(specs, "spr")) {
-                Action a = expectedKeysLastTick.contains("spr") ? Action.HOLD : Action.PRESS;
                 Expectation e = new Expectation();
                 e.mode = Mode.REQUIRED;
-                e.action = a;
+                e.action = Action.HOLD; // Toujours vérifier que la touche est maintenue, pas une nouvelle pression
                 e.key = "spr";
-                e.id = (a == Action.PRESS ? "press-" : "hold-") + "spr";
+                e.id = "hold-spr";
                 out.add(e);
             }
 
             // Ajouter jmp si coché et pas déjà dans les specs
             if (checkJmp && !tokenMentionsKey(specs, "jmp")) {
-                Action a = expectedKeysLastTick.contains("jmp") ? Action.HOLD : Action.PRESS;
                 Expectation e = new Expectation();
                 e.mode = Mode.REQUIRED;
-                e.action = a;
+                e.action = Action.HOLD; // Toujours vérifier que la touche est maintenue, pas une nouvelle pression
                 e.key = "jmp";
-                e.id = (a == Action.PRESS ? "press-" : "hold-") + "jmp";
+                e.id = "hold-jmp";
                 out.add(e);
             }
 
             // Ajouter snk si coché et pas déjà dans les specs
             if (checkSnk && !tokenMentionsKey(specs, "snk")) {
-                Action a = expectedKeysLastTick.contains("snk") ? Action.HOLD : Action.PRESS;
                 Expectation e = new Expectation();
                 e.mode = Mode.REQUIRED;
-                e.action = a;
+                e.action = Action.HOLD; // Toujours vérifier que la touche est maintenue, pas une nouvelle pression
                 e.key = "snk";
-                e.id = (a == Action.PRESS ? "press-" : "hold-") + "snk";
+                e.id = "hold-snk";
                 out.add(e);
             }
         }
@@ -578,21 +630,62 @@ public class InputRuntimeChecker {
             if (!ts.isWait && ts.mode == Mode.LENIENT) {
                 LenientWindow w = lenientWindows.get(ts.key);
                 if (w == null) {
+                    // Nouvelle fenêtre lenient
                     w = new LenientWindow();
                     w.startTick = tickIndex;
                     w.lastTick = tickIndex;
                     w.satisfied = false;
+
+                    // Déterminer si c'est un PRESS ou HOLD
+                    // Si la touche était déjà pressée au tick précédent (dans expectedKeysLastTick), c'est un HOLD
+                    // Sinon c'est un PRESS
+                    if (expectedKeysLastTick.contains(ts.key)) {
+                        w.expectedAction = Action.HOLD;
+                        // Pour un HOLD, vérifier qu'il y a un relâchement de la touche
+                        boolean down = isKeyDown(mc, ts.key);
+                        if (!down) {
+                            // La touche a été relâchée → satisfait
+                            w.satisfied = true;
+                        }
+                    } else {
+                        w.expectedAction = Action.PRESS;
+                        // Pour un PRESS, on doit vérifier qu'il y a une nouvelle pression
+                        boolean down = isKeyDown(mc, ts.key);
+                        boolean prev = prevDown.getOrDefault(ts.key, false);
+                        if (down && !prev) {
+                            w.satisfied = true;
+                        }
+                    }
+
                     lenientWindows.put(ts.key, w);
                 } else {
+                    // Fenêtre existante, on la prolonge
                     w.lastTick = tickIndex;
-                }
 
-                if (isKeyDown(mc, ts.key)) w.satisfied = true;
+                    // Vérifier si satisfait selon le type d'action attendu
+                    if (!w.satisfied) {
+                        if (w.expectedAction == Action.PRESS) {
+                            // Pour un PRESS, vérifier qu'il y a une nouvelle pression
+                            boolean down = isKeyDown(mc, ts.key);
+                            boolean prev = prevDown.getOrDefault(ts.key, false);
+                            if (down && !prev) {
+                                w.satisfied = true;
+                            }
+                        } else {
+                            // Pour un HOLD, vérifier qu'il y a un relâchement
+                            boolean down = isKeyDown(mc, ts.key);
+                            if (!down) {
+                                // La touche a été relâchée → satisfait
+                                w.satisfied = true;
+                            }
+                        }
+                    }
+                }
             }
         }
     }
 
-    private String resolveLenientWindowsEndingThisTick(List<TokenSpec> specsThisTick) {
+    private LenientFailure resolveLenientWindowsEndingThisTick(List<TokenSpec> specsThisTick) {
         Set<String> lenientNow = new HashSet<>();
         for (TokenSpec ts : specsThisTick) {
             if (!ts.isWait && ts.mode == Mode.LENIENT) {
@@ -608,19 +701,19 @@ public class InputRuntimeChecker {
         for (String key : toClose) {
             LenientWindow w = lenientWindows.remove(key);
             if (w != null && !w.satisfied) {
-                return "Lenient input not triggered: [" + key + "] in ticks " + (w.startTick + 1) + "-" + (w.lastTick + 1);
+                return new LenientFailure(key, w.expectedAction, w.startTick, w.lastTick);
             }
         }
         return null;
     }
 
-    private String closeAllLenientWindowsIfNeeded() {
+    private LenientFailure closeAllLenientWindowsIfNeeded() {
         for (Map.Entry<String, LenientWindow> it : lenientWindows.entrySet()) {
             if (it.getValue() != null && !it.getValue().satisfied) {
                 LenientWindow w = it.getValue();
                 String key = it.getKey();
                 lenientWindows.clear();
-                return "Lenient input not triggered: [" + key + "] in ticks " + (w.startTick + 1) + "-" + (w.lastTick + 1);
+                return new LenientFailure(key, w.expectedAction, w.startTick, w.lastTick);
             }
         }
         lenientWindows.clear();
@@ -630,8 +723,39 @@ public class InputRuntimeChecker {
     private void failStop(String elementName, String reason) {
         HudLog.clear();
         HudLog.setStatus("§cFail " + elementName + ":");
-        HudLog.push(ColorConfig.getContentColorCode() + reason);
+
+        // Vérifier si c'est un message lenient échoué
+        if (reason.startsWith("Lenient input not triggered: [")) {
+            // Format: "Lenient input not triggered: [key] in ticks start-end"
+            int keyStart = reason.indexOf('[') + 1;
+            int keyEnd = reason.indexOf(']');
+            String key = reason.substring(keyStart, keyEnd);
+
+            int ticksIdx = reason.indexOf("in ticks ");
+            String ticksStr = reason.substring(ticksIdx + 9);
+            String[] ticks = ticksStr.split("-");
+            int startTick = Integer.parseInt(ticks[0]);
+            int endTick = Integer.parseInt(ticks[1]);
+
+            HudLog.pushLenientFailed(key, startTick, endTick);
+        } else {
+            HudLog.push(ColorConfig.getContentColorCode() + reason);
+        }
+
         StatsTracker.recordFail(reason);
+        resetAll();
+    }
+
+    private void failStopLenient(String elementName, LenientFailure failure) {
+        HudLog.clear();
+        HudLog.setStatus("§cFail " + elementName + ":");
+
+        // Afficher avec les bonnes couleurs
+        String actionStr = failure.expectedAction == Action.PRESS ? "pressed" : "released";
+
+        // Inverser l'ordre car HudLog.add(0) ajoute au début
+        HudLog.pushLenientFailedNew(failure.key, actionStr, failure.startTick + 1, failure.lastTick + 1);
+
         resetAll();
     }
 
@@ -759,6 +883,65 @@ public class InputRuntimeChecker {
             first = false;
         }
         return sb.toString();
+    }
+
+    /**
+     * Valide que les lenient inputs sont correctement configurés
+     * Règle : Un lenient input doit apparaître sur AU MOINS 2 ticks consécutifs
+     * Retourne true si valide, false sinon (et affiche le message d'erreur)
+     */
+    private boolean validateLenientInputs(CheckElement element) {
+        if (element == null || element.tickInputs == null) return true;
+
+        for (int i = 0; i < element.tickInputs.size(); i++) {
+            String input = element.tickInputs.get(i);
+            if (input == null || input.trim().isEmpty()) continue;
+
+            List<TokenSpec> specs = parseTokens(input);
+            for (TokenSpec ts : specs) {
+                if (!ts.isWait && ts.mode == Mode.LENIENT) {
+                    // Vérifier qu'il y a au moins un tick avant ou après avec le même lenient input
+                    boolean hasConsecutive = false;
+
+                    // Vérifier le tick précédent
+                    if (i > 0) {
+                        String prevInput = element.tickInputs.get(i - 1);
+                        if (prevInput != null && containsLenientKey(prevInput, ts.key)) {
+                            hasConsecutive = true;
+                        }
+                    }
+
+                    // Vérifier le tick suivant
+                    if (i < element.tickInputs.size() - 1) {
+                        String nextInput = element.tickInputs.get(i + 1);
+                        if (nextInput != null && containsLenientKey(nextInput, ts.key)) {
+                            hasConsecutive = true;
+                        }
+                    }
+
+                    if (!hasConsecutive) {
+                        // Afficher l'erreur directement avec les bonnes couleurs
+                        HudLog.clear();
+                        HudLog.setStatus("§cInvalid configuration:");
+                        // Inverser l'ordre car HudLog ajoute au début (0)
+                        HudLog.pushValidationText("at least 2 consecutive ticks");
+                        HudLog.pushValidationError(String.valueOf(i + 1), ts.key);
+                        return false;
+                    }
+                }
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Vérifie si un input contient un lenient spécifique
+     */
+    private boolean containsLenientKey(String input, String key) {
+        if (input == null) return false;
+        input = input.toLowerCase();
+        return input.contains("lnt-" + key);
     }
 }
 

@@ -11,7 +11,7 @@ import java.io.IOException;
 public class GuiCatalog extends GuiScreen {
 
     private GuiTextField nameField;
-    private int scrollOffset = 0;
+    private static int scrollOffset = 0; // Statique pour persister entre les recréations du GUI
     private static final int VISIBLE_ITEMS = 8;
     private static final int ITEM_HEIGHT = 24;
 
@@ -20,7 +20,13 @@ public class GuiCatalog extends GuiScreen {
         Keyboard.enableRepeatEvents(true);
         int cx = this.width / 2;
 
+        // S'assurer que scrollOffset reste dans les limites valides
+        int maxScroll = Math.max(0, ElementStore.elements.size() - VISIBLE_ITEMS);
+        scrollOffset = Math.min(scrollOffset, maxScroll);
+        scrollOffset = Math.max(0, scrollOffset);
+
         nameField = new GuiTextField(0, this.fontRendererObj, cx - 100, 25, 140, 20);
+        nameField.setMaxStringLength(20); // Limite à 20 caractères pour éviter le dépassement
         nameField.setText("");
 
         this.buttonList.clear();
@@ -36,8 +42,7 @@ public class GuiCatalog extends GuiScreen {
 
             int y = baseY + visibleCount * ITEM_HEIGHT;
 
-            this.buttonList.add(new GuiButton(1000 + i, cx - 140, y, 180, 20,
-                    el.name + (isActive ? " [ACTIVE]" : "")));
+            this.buttonList.add(new GuiButton(1000 + i, cx - 140, y, 180, 20, el.name));
 
             this.buttonList.add(new GuiButton(2000 + i, cx + 45, y, 80, 20,
                     isActive ? "Deactivate" : "Activate"));
@@ -64,6 +69,7 @@ public class GuiCatalog extends GuiScreen {
         }
 
         if (b.id == 2) {
+            scrollOffset = 0; // Réinitialiser le scroll quand on ferme le catalogue
             this.mc.displayGuiScreen(null);
             return;
         }
@@ -134,6 +140,10 @@ public class GuiCatalog extends GuiScreen {
     @Override
     protected void keyTyped(char typedChar, int keyCode) throws IOException {
         if (nameField.textboxKeyTyped(typedChar, keyCode)) return;
+        // Réinitialiser le scroll quand on appuie sur Échap (keyCode 1)
+        if (keyCode == 1) {
+            scrollOffset = 0;
+        }
         super.keyTyped(typedChar, keyCode);
     }
 
@@ -152,12 +162,6 @@ public class GuiCatalog extends GuiScreen {
         this.drawString(this.fontRendererObj, "Name:", cx - 140, 31, 0xCCCCCC);
         nameField.drawTextBox();
 
-        int totalElements = ElementStore.elements.size();
-        if (totalElements > VISIBLE_ITEMS) {
-            this.drawString(this.fontRendererObj,
-                    "Elements " + (scrollOffset + 1) + "-" + Math.min(scrollOffset + VISIBLE_ITEMS, totalElements) + "/" + totalElements,
-                    cx - 140, 45, 0xAAAAAA);
-        }
 
         super.drawScreen(mouseX, mouseY, partialTicks);
     }

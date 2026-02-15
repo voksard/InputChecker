@@ -13,15 +13,6 @@ import java.util.List;
 
 public class GuiEditElement extends GuiScreen {
     private final CheckElement element;
-    // Sauvegarde de l'état original pour restaurer si on annule
-    private String originalName;
-    private List<String> originalTickInputs;
-    private List<Boolean> originalCheckSprint;
-    private List<Boolean> originalCheckJump;
-    private List<Boolean> originalCheckSneak;
-    private List<Boolean> originalNoSprint;
-    private List<Boolean> originalNoJump;
-    private List<Boolean> originalNoSneak;
 
     private GuiTextField nameField;
     private GuiButton saveButton;
@@ -60,16 +51,6 @@ public class GuiEditElement extends GuiScreen {
 
     public GuiEditElement(CheckElement element) {
         this.element = element;
-
-        // Sauvegarder l'état original pour pouvoir restaurer si on annule
-        this.originalName = element.name;
-        this.originalTickInputs = new ArrayList<>(element.tickInputs);
-        this.originalCheckSprint = new ArrayList<>(element.checkSprint);
-        this.originalCheckJump = new ArrayList<>(element.checkJump);
-        this.originalCheckSneak = new ArrayList<>(element.checkSneak);
-        this.originalNoSprint = new ArrayList<>(element.noSprint);
-        this.originalNoJump = new ArrayList<>(element.noJump);
-        this.originalNoSneak = new ArrayList<>(element.noSneak);
 
         if (element.tickInputs == null || element.tickInputs.isEmpty()) {
             element.tickInputs = new ArrayList<>();
@@ -175,20 +156,6 @@ public class GuiEditElement extends GuiScreen {
         updateSaveButtonState();
     }
 
-    /**
-     * Restaure l'état original de l'élément (annule les modifications)
-     */
-    private void restoreOriginalState() {
-        element.name = originalName;
-        element.tickInputs = new ArrayList<>(originalTickInputs);
-        element.checkSprint = new ArrayList<>(originalCheckSprint);
-        element.checkJump = new ArrayList<>(originalCheckJump);
-        element.checkSneak = new ArrayList<>(originalCheckSneak);
-        element.noSprint = new ArrayList<>(originalNoSprint);
-        element.noJump = new ArrayList<>(originalNoJump);
-        element.noSneak = new ArrayList<>(originalNoSneak);
-    }
-
     @Override
     protected void actionPerformed(GuiButton b) throws IOException {
         if (b.id == ID_SAVE) {
@@ -207,8 +174,15 @@ public class GuiEditElement extends GuiScreen {
         }
 
         if (b.id == ID_BACK) {
-            // Restaurer l'état original (annuler les modifications)
-            restoreOriginalState();
+            String newName = nameField.getText().trim();
+
+            // Vérifier si le nom est valide avant de sauvegarder
+            if (isNameValid(newName)) {
+                flushFieldsToElement();
+                element.name = newName;
+                ElementStore.save();
+            }
+
             this.mc.displayGuiScreen(new GuiCatalog());
             return;
         }
@@ -362,9 +336,17 @@ public class GuiEditElement extends GuiScreen {
 
     @Override
     protected void keyTyped(char typedChar, int keyCode) throws IOException {
-        // Détecter la touche Échap (ESC) pour annuler et restaurer l'état original
+        // Détecter la touche Échap (ESC) pour sauvegarder et fermer
         if (keyCode == Keyboard.KEY_ESCAPE) {
-            restoreOriginalState();
+            String newName = nameField.getText().trim();
+
+            // Vérifier si le nom est valide avant de sauvegarder
+            if (isNameValid(newName)) {
+                flushFieldsToElement();
+                element.name = newName;
+                ElementStore.save();
+            }
+
             super.keyTyped(typedChar, keyCode); // Ferme l'interface
             return;
         }

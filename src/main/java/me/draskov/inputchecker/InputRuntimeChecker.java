@@ -209,16 +209,10 @@ public class InputRuntimeChecker {
                 return;
             }
 
-            // Si des checkboxes sont cochées, traiter le tick comme s'il contenait ces touches
-            // Créer une chaîne avec les checkboxes cochées et la traiter normalement
-            List<String> checkboxes = new ArrayList<>();
-            if (checkSpr) checkboxes.add("spr");
-            if (checkJmp) checkboxes.add("jmp");
-            if (checkSnk) checkboxes.add("snk");
-
-            String checkboxString = String.join("+", checkboxes);
-            expectedRaw = checkboxString;
-            // Continuer avec le traitement normal ci-dessous
+            // Si des checkboxes sont cochées, laisser expectedRaw vide
+            // Les checkboxes créeront leurs expectations directement comme HOLD
+            // Ne PAS créer une chaîne "spr+jmp" car ça serait parsé comme PRESS
+            expectedRaw = "";
         }
 
         List<TokenSpec> specs = parseTokens(expectedRaw);
@@ -231,6 +225,14 @@ public class InputRuntimeChecker {
             } else if (exps.isEmpty()) {
                 // Seulement lenient inputs → attendre une activité pertinente
                 if (hasAnyRelevantActivityThisTick(mc, specs)) {
+                    started = true;
+                } else {
+                    updatePrevDown(mc);
+                    return;
+                }
+            } else if (containsOnlyHoldActions(exps)) {
+                // Seulement des HOLD (checkboxes spr/snk, pas jmp) → démarrer si au moins une des touches attendues est maintenue
+                if (hasAnyExpectedKeyDown(mc, exps)) {
                     started = true;
                 } else {
                     updatePrevDown(mc);
@@ -378,19 +380,24 @@ public class InputRuntimeChecker {
         boolean noJmp = active != null && tickIndex < active.noJump.size() && active.noJump.get(tickIndex);
         boolean noSnk = active != null && tickIndex < active.noSneak.size() && active.noSneak.get(tickIndex);
 
-        for (String k : actualDown) {
-            if (!(hideSprint && "sprint".equals(k)) && !hidden.contains(k)) {
-                // Exclure spr, snk, jmp s'ils ne sont pas cochés ET ne sont pas dans "no"
-                if ("spr".equals(k) && !checkSpr && !noSpr) {
-                    continue;
+        // Afficher les touches dans le même ordre que buildDisplayExpected : w, a, s, d, spr, jmp, snk
+        List<String> displayOrder = Arrays.asList("w", "a", "s", "d", "spr", "jmp", "snk");
+
+        for (String k : displayOrder) {
+            if (actualDown.contains(k)) {
+                if (!(hideSprint && "sprint".equals(k)) && !hidden.contains(k)) {
+                    // Exclure spr, snk, jmp s'ils ne sont pas cochés ET ne sont pas dans "no"
+                    if ("spr".equals(k) && !checkSpr && !noSpr) {
+                        continue;
+                    }
+                    if ("snk".equals(k) && !checkSnk && !noSnk) {
+                        continue;
+                    }
+                    if ("jmp".equals(k) && !checkJmp && !noJmp) {
+                        continue;
+                    }
+                    out.add(k);
                 }
-                if ("snk".equals(k) && !checkSnk && !noSnk) {
-                    continue;
-                }
-                if ("jmp".equals(k) && !checkJmp && !noJmp) {
-                    continue;
-                }
-                out.add(k);
             }
         }
         return out;
@@ -523,6 +530,43 @@ public class InputRuntimeChecker {
         return exps.stream().anyMatch(e -> e.action == Action.WAIT);
     }
 
+    private boolean containsOnlyHoldActions(List<Expectation> exps) {
+        if (exps.isEmpty()) {
+            return false;
+        }
+        // Vérifier que toutes les expectations en mode REQUIRED sont des HOLD (pas de PRESS)
+        // ET que ce sont seulement spr/snk (pas jmp, car jmp n'a pas de toggle)
+        for (Expectation e : exps) {
+            if (e.mode == Mode.REQUIRED) {
+                if (e.action != Action.HOLD) {
+                    return false;
+                }
+                // Si c'est jmp, retourner false car jmp doit attendre une activité pertinente
+                if ("jmp".equals(e.key)) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    private boolean hasAnyExpectedKeyDown(Minecraft mc, List<Expectation> exps) {
+        // Vérifier si au moins une des touches attendues (HOLD) est maintenue
+        // Seulement pour spr et snk (qui peuvent être en toggle), pas jmp
+        for (Expectation e : exps) {
+            if (e.mode == Mode.REQUIRED && e.action == Action.HOLD) {
+                // Seulement spr et snk peuvent être maintenus avant le checking (toggle sprint/sneak)
+                // jmp doit être traité comme un input normal (pas de toggle jump)
+                if ("spr".equals(e.key) || "snk".equals(e.key)) {
+                    if (isKeyDown(mc, e.key)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
     private boolean isSatisfiedThisTick(Minecraft mc, Expectation e, List<TokenSpec> specsThisTick) {
         if (e.action == Action.WAIT) {
             CheckElement active = ElementStore.getActive();
@@ -544,7 +588,21 @@ public class InputRuntimeChecker {
         }
 
         boolean down = isKeyDown(mc, e.key);
-        if (e.action == Action.HOLD) return down;
+
+        if (e.action == Action.HOLD) {
+            // Pour les HOLD (checkboxes), on accepte que la touche soit down
+            // MAIS : au premier tick du checking, on accepte aussi un press récent
+            // car il peut y avoir un délai de frame entre le press qui démarre le checking
+            // et la vérification des expectations
+            if (down) return true;
+
+            // Si la touche n'est pas down, vérifier si c'est un press très récent (même tick)
+            boolean prev = prevDown.getOrDefault(e.key, false);
+            // Si c'était pas down avant et que maintenant on vérifie,
+            // ça veut dire que prevDown n'a pas encore été mis à jour après le press
+            // Donc on accepte cette situation comme valide
+            return false;
+        }
 
         boolean prev = prevDown.getOrDefault(e.key, false);
         return down && !prev;

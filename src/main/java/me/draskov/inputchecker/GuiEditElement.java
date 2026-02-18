@@ -36,6 +36,7 @@ public class GuiEditElement extends GuiScreen {
 
     private static final int ID_SAVE = 1;
     private static final int ID_BACK = 2;
+    private static final int ID_REVERSE_STRAFE = 3;
     private static final int ID_DELETE_BASE = 3000;
     private static final int ID_DUPLICATE_BASE = 4000;
     private static final int ID_INSERT_ABOVE_BASE = 2000;
@@ -800,6 +801,14 @@ public class GuiEditElement extends GuiScreen {
             tf.mouseClicked(mouseX, mouseY, mouseButton);
         }
 
+        // Vérifier si on clique sur le bouton Reverse A/D (10, 190, 100x20)
+        if (isMouseInRect(mouseX, mouseY, 10, 190, 100, 20)) {
+            flushFieldsToElement();
+            reverseStrafe();
+            this.initGui();
+            return;
+        }
+
         // Gestion des clics sur les checkboxes et boutons d'action
         int cx = this.width / 2;
         int baseY = 60;
@@ -1043,7 +1052,9 @@ public class GuiEditElement extends GuiScreen {
         this.drawString(this.fontRendererObj, "Type prs-input", 10, 155, 0xAAAAAA);
         this.drawString(this.fontRendererObj, "or rls-input for", 10, 165, 0xAAAAAA);
         this.drawString(this.fontRendererObj, "press/release", 10, 175, 0xAAAAAA);
-        // Ligne vide pour espacement
+
+        // Bouton Reverse A/D
+        drawActionButton(10, 190, 100, 20, "Reverse A/D");
 
         this.drawString(this.fontRendererObj, "Name:", cx - 140, 26, 0xCCCCCC);
         nameField.drawTextBox();
@@ -1202,5 +1213,29 @@ public class GuiEditElement extends GuiScreen {
             saveButton.enabled = isNameValid(name);
         }
     }
-}
 
+    /**
+     * Inverse tous les 'a' en 'd' et vice versa dans tous les inputs de l'élément
+     */
+    private void reverseStrafe() {
+        for (int i = 0; i < element.tickInputs.size(); i++) {
+            String input = element.tickInputs.get(i);
+            if (input == null || input.isEmpty()) {
+                continue;
+            }
+
+            // Remplacer tous les 'a' par un placeholder temporaire
+            // pour éviter les conflits lors de l'échange
+            String temp = input.replace("a", "###TEMP_A###");
+            temp = temp.replace("d", "a");
+            temp = temp.replace("###TEMP_A###", "d");
+
+            // Faire de même pour les majuscules (au cas où)
+            temp = temp.replace("A", "###TEMP_A###");
+            temp = temp.replace("D", "A");
+            temp = temp.replace("###TEMP_A###", "D");
+
+            element.tickInputs.set(i, temp);
+        }
+    }
+}

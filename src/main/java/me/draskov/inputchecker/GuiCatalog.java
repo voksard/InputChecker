@@ -11,46 +11,64 @@ import java.io.IOException;
 public class GuiCatalog extends GuiScreen {
 
     private GuiTextField nameField;
+    private GuiTextField searchField;
     private GuiButton addButton;
     private static int scrollOffset = 0; // Statique pour persister entre les recréations du GUI
+    private static String searchText = ""; // Statique pour conserver le texte de recherche
+    private static boolean searchFieldFocused = false; // Statique pour conserver le focus
     private static final int VISIBLE_ITEMS = 8;
     private static final int ITEM_HEIGHT = 24;
+    private java.util.List<CheckElement> filteredElements = new java.util.ArrayList<>();
 
     @Override
     public void initGui() {
         Keyboard.enableRepeatEvents(true);
         int cx = this.width / 2;
 
+        // Mettre à jour la liste filtrée
+        updateFilteredElements();
+
         // S'assurer que scrollOffset reste dans les limites valides
-        int maxScroll = Math.max(0, ElementStore.elements.size() - VISIBLE_ITEMS);
+        int maxScroll = Math.max(0, filteredElements.size() - VISIBLE_ITEMS);
         scrollOffset = Math.min(scrollOffset, maxScroll);
         scrollOffset = Math.max(0, scrollOffset);
 
+        // Champ Name
         nameField = new GuiTextField(0, this.fontRendererObj, cx - 100, 25, 140, 20);
         nameField.setMaxStringLength(20); // Limite à 20 caractères pour éviter le dépassement
         nameField.setText("");
+
+        // Champ de recherche (sous le champ Name, même taille)
+        searchField = new GuiTextField(10, this.fontRendererObj, cx - 100, 50, 140, 20);
+        searchField.setMaxStringLength(20);
+        searchField.setText(searchText); // Restaurer le texte de recherche
+        searchField.setFocused(searchFieldFocused);
+        searchField.setCanLoseFocus(true);
 
         this.buttonList.clear();
         addButton = new GuiButton(1, cx + 45, 25, 80, 20, "Add");
         this.buttonList.add(addButton);
         updateAddButtonState();
 
-        int baseY = 60;
+        int baseY = 85;
         int visibleCount = 0;
         int idx = 0;
 
-        for (int i = scrollOffset; i < ElementStore.elements.size() && visibleCount < VISIBLE_ITEMS; i++, idx++) {
-            CheckElement el = ElementStore.elements.get(i);
+        for (int i = scrollOffset; i < filteredElements.size() && visibleCount < VISIBLE_ITEMS; i++, idx++) {
+            CheckElement el = filteredElements.get(i);
             boolean isActive = ElementStore.activeId != null && el.id.equals(ElementStore.activeId);
 
             int y = baseY + visibleCount * ITEM_HEIGHT;
 
-            this.buttonList.add(new GuiButton(1000 + i, cx - 140, y, 180, 20, el.name));
+            // Trouver l'index réel dans ElementStore.elements
+            int realIndex = ElementStore.elements.indexOf(el);
 
-            this.buttonList.add(new GuiButton(2000 + i, cx + 45, y, 80, 20,
+            this.buttonList.add(new GuiButton(1000 + realIndex, cx - 140, y, 180, 20, el.name));
+
+            this.buttonList.add(new GuiButton(2000 + realIndex, cx + 45, y, 80, 20,
                     isActive ? "Deactivate" : "Activate"));
 
-            this.buttonList.add(new GuiButton(3000 + i, cx + 130, y, 25, 20, "X"));
+            this.buttonList.add(new GuiButton(3000 + realIndex, cx + 130, y, 25, 20, "X"));
 
             visibleCount++;
         }
@@ -82,6 +100,8 @@ public class GuiCatalog extends GuiScreen {
 
         if (b.id == 2) {
             scrollOffset = 0; // Réinitialiser le scroll quand on ferme le catalogue
+            searchText = ""; // Réinitialiser la recherche quand on ferme le catalogue
+            searchFieldFocused = false; // Réinitialiser le focus
             this.mc.displayGuiScreen(null);
             return;
         }
@@ -139,7 +159,7 @@ public class GuiCatalog extends GuiScreen {
         super.handleMouseInput();
         int scroll = Mouse.getEventDWheel();
         if (scroll != 0) {
-            int maxScroll = Math.max(0, ElementStore.elements.size() - VISIBLE_ITEMS);
+            int maxScroll = Math.max(0, filteredElements.size() - VISIBLE_ITEMS);
             if (scroll > 0) {
                 scrollOffset = Math.max(0, scrollOffset - 1);
             } else {
@@ -151,20 +171,34 @@ public class GuiCatalog extends GuiScreen {
 
     @Override
     protected void keyTyped(char typedChar, int keyCode) throws IOException {
+        if (searchField.textboxKeyTyped(typedChar, keyCode)) {
+            searchText = searchField.getText(); // Sauvegarder le texte de recherche
+            searchFieldFocused = true; // Maintenir le focus sur le champ de recherche
+            scrollOffset = 0; // Réinitialiser le scroll lors d'une recherche
+            this.initGui(); // Recharger l'interface pour appliquer le filtre
+            return;
+        }
         if (nameField.textboxKeyTyped(typedChar, keyCode)) {
+            searchFieldFocused = false; // Le champ de recherche perd le focus
             updateAddButtonState(); // Mettre à jour l'état du bouton après chaque saisie
             return;
         }
         // Réinitialiser le scroll quand on appuie sur Échap (keyCode 1)
         if (keyCode == 1) {
             scrollOffset = 0;
+            searchFieldFocused = false;
         }
         super.keyTyped(typedChar, keyCode);
     }
 
     @Override
     protected void mouseClicked(int mouseX, int mouseY, int mouseButton) throws IOException {
+        searchField.mouseClicked(mouseX, mouseY, mouseButton);
         nameField.mouseClicked(mouseX, mouseY, mouseButton);
+
+        // Mettre à jour l'état du focus
+        searchFieldFocused = searchField.isFocused();
+
         super.mouseClicked(mouseX, mouseY, mouseButton);
     }
 
@@ -173,16 +207,25 @@ public class GuiCatalog extends GuiScreen {
         this.drawDefaultBackground();
         int cx = this.width / 2;
 
+        // Titre principal
         this.drawCenteredString(this.fontRendererObj, "InputChecker - Catalog", cx, 8, 0xFFFFFF);
+
+        // Label et champ Name
         this.drawString(this.fontRendererObj, "Name:", cx - 140, 31, 0xCCCCCC);
         nameField.drawTextBox();
 
+        // Label et champ de recherche
+        this.drawString(this.fontRendererObj, "Search:", cx - 140, 56, 0xCCCCCC);
+        searchField.drawTextBox();
+
         // Afficher les numéros de ligne à gauche de chaque élément
-        int baseY = 60;
+        int baseY = 85;
         int visibleCount = 0;
-        for (int i = scrollOffset; i < ElementStore.elements.size() && visibleCount < VISIBLE_ITEMS; i++) {
+        for (int i = scrollOffset; i < filteredElements.size() && visibleCount < VISIBLE_ITEMS; i++) {
             int y = baseY + visibleCount * ITEM_HEIGHT;
-            int lineNumber = i + 1; // Numéro de ligne (1-based)
+            CheckElement el = filteredElements.get(i);
+            // Afficher le numéro de ligne basé sur l'index dans la liste complète
+            int lineNumber = ElementStore.elements.indexOf(el) + 1;
             this.drawString(this.fontRendererObj, String.valueOf(lineNumber), cx - 165, y + 6, 0xAAAAAA);
             visibleCount++;
         }
@@ -218,6 +261,26 @@ public class GuiCatalog extends GuiScreen {
         if (addButton != null) {
             String name = nameField.getText().trim();
             addButton.enabled = isNameValid(name);
+        }
+    }
+
+    /**
+     * Met à jour la liste filtrée en fonction de la recherche
+     */
+    private void updateFilteredElements() {
+        filteredElements.clear();
+
+        if (searchText == null || searchText.trim().isEmpty()) {
+            // Si pas de recherche, afficher tous les éléments
+            filteredElements.addAll(ElementStore.elements);
+        } else {
+            // Filtrer les éléments par nom (insensible à la casse)
+            String search = searchText.toLowerCase().trim();
+            for (CheckElement el : ElementStore.elements) {
+                if (el.name.toLowerCase().contains(search)) {
+                    filteredElements.add(el);
+                }
+            }
         }
     }
 }

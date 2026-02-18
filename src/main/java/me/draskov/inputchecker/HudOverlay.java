@@ -59,9 +59,9 @@ public class HudOverlay {
     private void drawPanel(Minecraft mc, int x, int y, String status, List<String> lines, boolean main) {
         ColorConfig colors = ColorConfig.get();
 
-        status = status.replaceAll("§.", "");
+        String cleanStatus = status.replaceAll("§.", "");
 
-        int w = TextRenderer.getStringWidth(status);
+        int w = TextRenderer.getStringWidth(cleanStatus);
         for (String line : lines) {
             w = Math.max(w, TextRenderer.getStringWidth(line));
         }
@@ -79,7 +79,16 @@ public class HudOverlay {
         }
 
         net.minecraft.client.gui.Gui.drawRect(L, T, R, B, 0x00000000);
-        TextRenderer.drawString(status, x, y, colors.titleColor, true);
+
+        // Determine title color: red for Fail, green for Ok, otherwise use titleColor
+        int titleColor = colors.titleColor;
+        if (cleanStatus.startsWith("Fail ")) {
+            titleColor = 0xFFFF5555; // Red
+        } else if (cleanStatus.startsWith("Ok ")) {
+            titleColor = 0xFF55FF55; // Green
+        }
+
+        TextRenderer.drawString(cleanStatus, x, y, titleColor, true);
 
         int yy = y + 12;
         for (String line : lines) {

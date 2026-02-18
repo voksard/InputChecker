@@ -104,9 +104,9 @@ public class GuiEditHud extends GuiScreen {
         // Calculer et sauvegarder les bounds AVANT de dessiner
         calculatePanelBounds(mc, x, y, status, lines, isMain);
 
-        status = status.replaceAll("§.", "");
+        String cleanStatus = status.replaceAll("§.", "");
 
-        int w = TextRenderer.getStringWidth(status);
+        int w = TextRenderer.getStringWidth(cleanStatus);
         for (String s : lines) w = Math.max(w, TextRenderer.getStringWidth(s));
         int h = (1 + lines.size()) * 10 + 6;
 
@@ -118,7 +118,15 @@ public class GuiEditHud extends GuiScreen {
         int bg = 0x00000000; // Transparent
         drawRect(left, top, right, bottom, bg);
 
-        TextRenderer.drawString(status, x, y, titleColor, true);
+        // Determine title color: red for Fail, green for Ok, otherwise use titleColor
+        int finalTitleColor = titleColor;
+        if (cleanStatus.startsWith("Fail ")) {
+            finalTitleColor = 0xFFFF5555; // Red
+        } else if (cleanStatus.startsWith("Ok ")) {
+            finalTitleColor = 0xFF55FF55; // Green
+        }
+
+        TextRenderer.drawString(cleanStatus, x, y, finalTitleColor, true);
 
         int yy = y + 12;
         for (String s : lines) {

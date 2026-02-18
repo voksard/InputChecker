@@ -1,7 +1,6 @@
 package me.draskov.inputchecker;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.settings.KeyBinding;
 
 import java.util.*;
 
@@ -9,12 +8,16 @@ public class InputRuntimeChecker {
     private boolean armed = false;
     private boolean started = false;
     private int tickIndex = 0;
-    private boolean hasStartedBefore = false; // Track si le check a déjà commencé pour cet élément
-    private String lastActiveElementId = null; // Track le dernier élément actif
+    private boolean hasStartedBefore = false;
+    private String lastActiveElementId = null;
 
     private final Map<String, Boolean> prevDown = new HashMap<>();
     private final Set<String> expectedKeysLastTick = new HashSet<>();
     private final Map<String, LenientWindow> lenientWindows = new HashMap<>();
+
+    // Variables pour capturer l'état du joueur au début du tick
+    private double lastMotionY = 0.0;
+    private boolean lastOnGround = true;
 
     private static class LenientWindow {
         int startTick;
@@ -111,6 +114,12 @@ public class InputRuntimeChecker {
         prevDown.clear();
         for (String k : keysAll()) {
             prevDown.put(k, isKeyDown(mc, k));
+        }
+
+        // Initialiser les variables de tracking pour le jump
+        if (mc.thePlayer != null) {
+            lastMotionY = mc.thePlayer.motionY;
+            lastOnGround = mc.thePlayer.onGround;
         }
 
         expectedKeysLastTick.clear();
@@ -322,10 +331,11 @@ public class InputRuntimeChecker {
     }
 
     private Set<String> buildDisplayExpected(List<TokenSpec> specs) {
-        Set<String> out = new LinkedHashSet<>();
+        Set<String> tempSet = new HashSet<>();
 
         for (TokenSpec spec : specs) {
             if (spec.isWait) {
+                Set<String> out = new LinkedHashSet<>();
                 out.add("wait");
                 return out;
             }
@@ -334,7 +344,7 @@ public class InputRuntimeChecker {
         boolean hideSprint = hideSprintInDisplay();
         for (TokenSpec ts : specs) {
             if (!ts.isWait && ts.mode == Mode.REQUIRED && !(hideSprint && "sprint".equals(ts.key))) {
-                out.add(ts.key);
+                tempSet.add(ts.key);
             }
         }
 
@@ -345,14 +355,23 @@ public class InputRuntimeChecker {
             boolean checkJmp = tickIndex < active.checkJump.size() && active.checkJump.get(tickIndex);
             boolean checkSnk = tickIndex < active.checkSneak.size() && active.checkSneak.get(tickIndex);
 
-            if (checkSpr && !out.contains("spr")) {
-                out.add("spr");
+            if (checkSpr && !tempSet.contains("spr")) {
+                tempSet.add("spr");
             }
-            if (checkJmp && !out.contains("jmp")) {
-                out.add("jmp");
+            if (checkJmp && !tempSet.contains("jmp")) {
+                tempSet.add("jmp");
             }
-            if (checkSnk && !out.contains("snk")) {
-                out.add("snk");
+            if (checkSnk && !tempSet.contains("snk")) {
+                tempSet.add("snk");
+            }
+        }
+
+        // Trier dans l'ordre standard pour un affichage cohérent
+        Set<String> out = new LinkedHashSet<>();
+        List<String> standardOrder = Arrays.asList("w", "a", "s", "d", "spr", "jmp", "snk");
+        for (String k : standardOrder) {
+            if (tempSet.contains(k)) {
+                out.add(k);
             }
         }
 
@@ -360,7 +379,7 @@ public class InputRuntimeChecker {
     }
 
     private Set<String> buildDisplayGot(Set<String> actualDown, List<TokenSpec> specs) {
-        Set<String> out = new LinkedHashSet<>();
+        Set<String> tempSet = new HashSet<>();
         boolean hideSprint = hideSprintInDisplay();
 
         Set<String> hidden = new HashSet<>();
@@ -380,26 +399,32 @@ public class InputRuntimeChecker {
         boolean noJmp = active != null && tickIndex < active.noJump.size() && active.noJump.get(tickIndex);
         boolean noSnk = active != null && tickIndex < active.noSneak.size() && active.noSneak.get(tickIndex);
 
-        // Afficher les touches dans le même ordre que buildDisplayExpected : w, a, s, d, spr, jmp, snk
-        List<String> displayOrder = Arrays.asList("w", "a", "s", "d", "spr", "jmp", "snk");
-
-        for (String k : displayOrder) {
-            if (actualDown.contains(k)) {
-                if (!(hideSprint && "sprint".equals(k)) && !hidden.contains(k)) {
-                    // Exclure spr, snk, jmp s'ils ne sont pas cochés ET ne sont pas dans "no"
-                    if ("spr".equals(k) && !checkSpr && !noSpr) {
-                        continue;
-                    }
-                    if ("snk".equals(k) && !checkSnk && !noSnk) {
-                        continue;
-                    }
-                    if ("jmp".equals(k) && !checkJmp && !noJmp) {
-                        continue;
-                    }
-                    out.add(k);
+        // Collecter toutes les touches valides dans un Set temporaire
+        for (String k : actualDown) {
+            if (!(hideSprint && "sprint".equals(k)) && !hidden.contains(k)) {
+                // Exclure spr, snk, jmp s'ils ne sont pas cochés ET ne sont pas dans "no"
+                if ("spr".equals(k) && !checkSpr && !noSpr) {
+                    continue;
                 }
+                if ("snk".equals(k) && !checkSnk && !noSnk) {
+                    continue;
+                }
+                if ("jmp".equals(k) && !checkJmp && !noJmp) {
+                    continue;
+                }
+                tempSet.add(k);
             }
         }
+
+        // Trier dans l'ordre standard pour un affichage cohérent (même ordre que buildDisplayExpected)
+        Set<String> out = new LinkedHashSet<>();
+        List<String> standardOrder = Arrays.asList("w", "a", "s", "d", "spr", "jmp", "snk");
+        for (String k : standardOrder) {
+            if (tempSet.contains(k)) {
+                out.add(k);
+            }
+        }
+
         return out;
     }
 
@@ -590,20 +615,11 @@ public class InputRuntimeChecker {
         boolean down = isKeyDown(mc, e.key);
 
         if (e.action == Action.HOLD) {
-            // Pour les HOLD (checkboxes), on accepte que la touche soit down
-            // MAIS : au premier tick du checking, on accepte aussi un press récent
-            // car il peut y avoir un délai de frame entre le press qui démarre le checking
-            // et la vérification des expectations
-            if (down) return true;
-
-            // Si la touche n'est pas down, vérifier si c'est un press très récent (même tick)
-            boolean prev = prevDown.getOrDefault(e.key, false);
-            // Si c'était pas down avant et que maintenant on vérifie,
-            // ça veut dire que prevDown n'a pas encore été mis à jour après le press
-            // Donc on accepte cette situation comme valide
-            return false;
+            // Pour les HOLD, la touche doit simplement être down
+            return down;
         }
 
+        // Pour les PRESS : nouvelle pression requise
         boolean prev = prevDown.getOrDefault(e.key, false);
         return down && !prev;
     }
@@ -872,23 +888,34 @@ public class InputRuntimeChecker {
     }
 
     private boolean isKeyDown(Minecraft mc, String key) {
-        KeyBinding kb = resolveKeyBinding(mc, key);
-        return kb != null && kb.isKeyDown();
-    }
+        if (mc.thePlayer == null) return false;
 
-    private KeyBinding resolveKeyBinding(Minecraft mc, String key) {
-        if (key == null) return null;
-        key = key.toLowerCase();
-
-        switch (key) {
-            case "w": return mc.gameSettings.keyBindForward;
-            case "a": return mc.gameSettings.keyBindLeft;
-            case "s": return mc.gameSettings.keyBindBack;
-            case "d": return mc.gameSettings.keyBindRight;
-            case "jmp": return mc.gameSettings.keyBindJump;
-            case "snk": return mc.gameSettings.keyBindSneak;
-            case "spr": return mc.gameSettings.keyBindSprint;
-            default: return null;
+        switch (key.toLowerCase()) {
+            case "w":
+                // moveForward > 0 signifie que le joueur avance (W pressé dans le jeu)
+                return mc.thePlayer.moveForward > 0.0f;
+            case "s":
+                // moveForward < 0 signifie que le joueur recule (S pressé dans le jeu)
+                return mc.thePlayer.moveForward < 0.0f;
+            case "a":
+                // moveStrafing > 0 signifie que le joueur va à gauche (A pressé dans le jeu)
+                return mc.thePlayer.moveStrafing > 0.0f;
+            case "d":
+                // moveStrafing < 0 signifie que le joueur va à droite (D pressé dans le jeu)
+                return mc.thePlayer.moveStrafing < 0.0f;
+            case "jmp":
+                // Détecter un saut : le joueur a quitté le sol (onGround change de true à false)
+                // ET a une vélocité verticale positive
+                boolean jumping = !mc.thePlayer.onGround && lastOnGround && mc.thePlayer.motionY > 0.0;
+                return jumping;
+            case "snk":
+                // isSneaking() indique si le joueur est accroupi dans le jeu
+                return mc.thePlayer.isSneaking();
+            case "spr":
+                // isSprinting() indique si le joueur sprinte dans le jeu
+                return mc.thePlayer.isSprinting();
+            default:
+                return false;
         }
     }
 
@@ -906,6 +933,12 @@ public class InputRuntimeChecker {
     private void updatePrevDown(Minecraft mc) {
         for (String k : keysAll()) {
             prevDown.put(k, isKeyDown(mc, k));
+        }
+
+        // Mettre à jour les variables de tracking pour le jump
+        if (mc.thePlayer != null) {
+            lastMotionY = mc.thePlayer.motionY;
+            lastOnGround = mc.thePlayer.onGround;
         }
     }
 

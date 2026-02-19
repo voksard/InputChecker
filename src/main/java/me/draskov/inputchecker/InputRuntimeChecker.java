@@ -15,10 +15,6 @@ public class InputRuntimeChecker {
     private final Set<String> expectedKeysLastTick = new HashSet<>();
     private final Map<String, LenientWindow> lenientWindows = new HashMap<>();
 
-    // Variables pour capturer l'état du joueur au début du tick
-    private double lastMotionY = 0.0;
-    private boolean lastOnGround = true;
-
     private static class LenientWindow {
         int startTick;
         int lastTick;
@@ -114,12 +110,6 @@ public class InputRuntimeChecker {
         prevDown.clear();
         for (String k : keysAll()) {
             prevDown.put(k, isKeyDown(mc, k));
-        }
-
-        // Initialiser les variables de tracking pour le jump
-        if (mc.thePlayer != null) {
-            lastMotionY = mc.thePlayer.motionY;
-            lastOnGround = mc.thePlayer.onGround;
         }
 
         expectedKeysLastTick.clear();
@@ -904,10 +894,8 @@ public class InputRuntimeChecker {
                 // moveStrafing < 0 signifie que le joueur va à droite (D pressé dans le jeu)
                 return mc.thePlayer.moveStrafing < 0.0f;
             case "jmp":
-                // Détecter un saut : le joueur a quitté le sol (onGround change de true à false)
-                // ET a une vélocité verticale positive
-                boolean jumping = !mc.thePlayer.onGround && lastOnGround && mc.thePlayer.motionY > 0.0;
-                return jumping;
+                // Détecter si le joueur essaie de sauter in-game (indépendamment des collisions)
+                return mc.thePlayer.movementInput.jump;
             case "snk":
                 // isSneaking() indique si le joueur est accroupi dans le jeu
                 return mc.thePlayer.isSneaking();
@@ -933,12 +921,6 @@ public class InputRuntimeChecker {
     private void updatePrevDown(Minecraft mc) {
         for (String k : keysAll()) {
             prevDown.put(k, isKeyDown(mc, k));
-        }
-
-        // Mettre à jour les variables de tracking pour le jump
-        if (mc.thePlayer != null) {
-            lastMotionY = mc.thePlayer.motionY;
-            lastOnGround = mc.thePlayer.onGround;
         }
     }
 
